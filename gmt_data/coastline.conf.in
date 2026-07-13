@@ -1,0 +1,4 @@
+#
+# GSHHG shoreline search path for in-build-dir tests
+#
+@GSHHG_PATH@

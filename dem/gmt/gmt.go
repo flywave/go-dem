@@ -13,6 +13,7 @@ package gmt
 import "C"
 import (
 	"fmt"
+	"os"
 	"unsafe"
 )
 
@@ -26,6 +27,10 @@ type GridConfig struct {
 }
 
 func init() {
+	// Ensure GMT_SHAREDIR is set (from env or default gmt_data/)
+	if _, set := os.LookupEnv("GMT_SHAREDIR"); !set && gmtDataDir != "" {
+		os.Setenv("GMT_SHAREDIR", gmtDataDir)
+	}
 	C.gdemo_gmt_begin()
 }
 
