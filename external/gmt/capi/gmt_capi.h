@@ -6,10 +6,10 @@ extern "C" {
 #endif
 
 /* Initialize GMT session. Returns 0 on success. */
-int gmt_begin(void);
+int gdemo_gmt_begin(void);
 
 /* Destroy GMT session. */
-void gmt_end(void);
+void gdemo_gmt_end(void);
 
 /*
  * Surface interpolation (splines in tension).
