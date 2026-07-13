@@ -28,13 +28,17 @@ func TestWaffleFactory_Registry(t *testing.T) {
 	}
 }
 
-func TestCollectPoints_Empty(t *testing.T) {
-	pts, zs, err := collectPoints(nil)
-	if err != nil {
-		t.Fatalf("error: %v", err)
+func TestPointsFromRaster_NoFile(t *testing.T) {
+	_, err := PointsFromRaster("nonexistent.tif")
+	if err == nil {
+		t.Error("expected error for nonexistent file")
 	}
-	if len(pts) != 0 || len(zs) != 0 {
-		t.Errorf("expected empty, got %d pts %d zs", len(pts), len(zs))
+}
+
+func TestPointsFromMultiple_Empty(t *testing.T) {
+	_, err := PointsFromMultiple(nil)
+	if err == nil {
+		t.Error("expected error for nil input")
 	}
 }
 
@@ -206,18 +210,20 @@ func TestGridIndex_FindTriangles(t *testing.T) {
 	_ = tris
 }
 
-func TestIsLASFile(t *testing.T) {
-	if !isLASFile("data.las") {
-		t.Error(".las should be detected")
+func TestPointStructure(t *testing.T) {
+	p := Point{
+		Position: vec2.T{1, 2},
+		Z: 100,
+		Uncertainty: 0.5,
 	}
-	if !isLASFile("data.laz") {
-		t.Error(".laz should be detected")
+	if p.Position[0] != 1 || p.Position[1] != 2 {
+		t.Errorf("position: expected (1,2), got %v", p.Position)
 	}
-	if isLASFile("data.tif") {
-		t.Error(".tif should not be las")
+	if p.Z != 100 {
+		t.Errorf("z: expected 100, got %.2f", p.Z)
 	}
-	if isLASFile("short") {
-		t.Error("short string should not be las")
+	if p.Uncertainty != 0.5 {
+		t.Errorf("uncertainty: expected 0.5, got %.2f", p.Uncertainty)
 	}
 }
 

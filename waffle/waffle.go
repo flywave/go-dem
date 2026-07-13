@@ -4,7 +4,14 @@ import (
 	"fmt"
 
 	"github.com/flywave/go-dem"
+	"github.com/flywave/go3d/float64/vec2"
 )
+
+type Point struct {
+	Position    vec2.T
+	Z           float64
+	Uncertainty float64
+}
 
 type Options struct {
 	Region       *dem.Region
@@ -20,7 +27,7 @@ type Options struct {
 
 type Waffle interface {
 	Name() string
-	Run(sources []string, opts *Options) (*Result, error)
+	Run(points []Point, opts *Options) (*Result, error)
 }
 
 type Result struct {

@@ -26,12 +26,8 @@ type cudemCell struct {
 	weight float64
 }
 
-func (cw *cudemWaffle) Run(sources []string, opts *Options) (*Result, error) {
-	pts, zs, err := collectPoints(sources)
-	if err != nil {
-		return nil, err
-	}
-	if len(pts) == 0 {
+func (cw *cudemWaffle) Run(points []Point, opts *Options) (*Result, error) {
+	if len(points) == 0 {
 		return nil, fmt.Errorf("no data points")
 	}
 
@@ -44,6 +40,13 @@ func (cw *cudemWaffle) Run(sources []string, opts *Options) (*Result, error) {
 	noData := opts.NoData
 	if noData == 0 {
 		noData = dem.DefaultNoData
+	}
+
+	pts := make([]vec2.T, len(points))
+	zs := make([]float64, len(points))
+	for i, p := range points {
+		pts[i] = p.Position
+		zs[i] = p.Z
 	}
 
 	width := region.XSize

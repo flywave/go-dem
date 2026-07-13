@@ -19,24 +19,22 @@ func init() {
 	})
 }
 
-type triangleIndex struct {
-	cx, cy float64
-	pts    [3]int
-}
-
-func (nw *naturalNeighborWaffle) Run(sources []string, opts *Options) (*Result, error) {
-	pts, zs, err := collectPoints(sources)
-	if err != nil {
-		return nil, err
-	}
-	if len(pts) < 3 {
-		return nil, fmt.Errorf("need at least 3 points, got %d", len(pts))
+func (nw *naturalNeighborWaffle) Run(points []Point, opts *Options) (*Result, error) {
+	if len(points) < 3 {
+		return nil, fmt.Errorf("need at least 3 points, got %d", len(points))
 	}
 
 	region := opts.Region
 	if region.XSize <= 0 || region.YSize <= 0 {
 		region.XSize = int(math.Round((region.BBox().Max[0] - region.BBox().Min[0]) / region.XRes))
 		region.YSize = int(math.Round((region.BBox().Max[1] - region.BBox().Min[1]) / region.YRes))
+	}
+
+	pts := make([]vec2.T, len(points))
+	zs := make([]float64, len(points))
+	for i, p := range points {
+		pts[i] = p.Position
+		zs[i] = p.Z
 	}
 
 	delaunayPts := make([]delaunay.Point, len(pts))
@@ -49,9 +47,9 @@ func (nw *naturalNeighborWaffle) Run(sources []string, opts *Options) (*Result, 
 		return nil, fmt.Errorf("delaunay triangulation failed: %v", err)
 	}
 
-	tris := tri.GetTrianglesPointsMap()
-	triList := make([]triangleIndex, 0, len(tris))
-	for _, ti := range tris {
+	triMap := tri.GetTrianglesPointsMap()
+	triList := make([]triangleIndex, 0, len(triMap))
+	for _, ti := range triMap {
 		if len(ti) != 3 {
 			continue
 		}
@@ -87,97 +85,4 @@ func (nw *naturalNeighborWaffle) Run(sources []string, opts *Options) (*Result, 
 	}
 
 	return &Result{DEM: demData, Region: region}, nil
-}
-
-func interpolateLaplace(x, y float64, pts []vec2.T, zs []float64, tris []triangleIndex) float64 {
-	found, p0, p1, p2, z0, z1, z2 := findContainingTriangle(x, y, pts, zs, tris)
-	if !found {
-		return math.NaN()
-	}
-
-	return laplaceWeightedInterp(x, y, p0, p1, p2, z0, z1, z2)
-}
-
-func findContainingTriangle(x, y float64, pts []vec2.T, zs []float64, tris []triangleIndex) (bool, vec2.T, vec2.T, vec2.T, float64, float64, float64) {
-	bestTri := -1
-	var bestDist float64
-
-	for i, tri := range tris {
-		dx := x - tri.cx
-		dy := y - tri.cy
-		dist := dx*dx + dy*dy
-
-		if bestTri < 0 || dist < bestDist {
-			t0, t1, t2 := tri.pts[0], tri.pts[1], tri.pts[2]
-			_, inside := barycentricInterp(x, y,
-				pts[t0], pts[t1], pts[t2],
-				zs[t0], zs[t1], zs[t2])
-			if inside {
-				bestTri = i
-				bestDist = dist
-			}
-		}
-	}
-
-	if bestTri >= 0 {
-		tri := tris[bestTri]
-		t0, t1, t2 := tri.pts[0], tri.pts[1], tri.pts[2]
-		return true, pts[t0], pts[t1], pts[t2], zs[t0], zs[t1], zs[t2]
-	}
-
-	return false, vec2.T{}, vec2.T{}, vec2.T{}, 0, 0, 0
-}
-
-func laplaceWeightedInterp(x, y float64, p0, p1, p2 vec2.T, z0, z1, z2 float64) float64 {
-	d0 := math.Sqrt(distSq(x, y, p0[0], p0[1]))
-	d1 := math.Sqrt(distSq(x, y, p1[0], p1[1]))
-	d2 := math.Sqrt(distSq(x, y, p2[0], p2[1]))
-
-	if d0 < 1e-12 {
-		return z0
-	}
-	if d1 < 1e-12 {
-		return z1
-	}
-	if d2 < 1e-12 {
-		return z2
-	}
-
-	alpha1 := angleBetween(p0, x, y, p2)
-	beta1 := angleBetween(p0, x, y, p1)
-	w0 := (math.Tan(alpha1/2) + math.Tan(beta1/2)) / d0
-
-	alpha2 := angleBetween(p1, x, y, p0)
-	beta2 := angleBetween(p1, x, y, p2)
-	w1 := (math.Tan(alpha2/2) + math.Tan(beta2/2)) / d1
-
-	alpha3 := angleBetween(p2, x, y, p1)
-	beta3 := angleBetween(p2, x, y, p0)
-	w2 := (math.Tan(alpha3/2) + math.Tan(beta3/2)) / d2
-
-	totalWeight := w0 + w1 + w2
-	if totalWeight <= 0 {
-		return math.NaN()
-	}
-
-	return (w0*z0 + w1*z1 + w2*z2) / totalWeight
-}
-
-func angleBetween(p1 vec2.T, x, y float64, p2 vec2.T) float64 {
-	ba := math.Atan2(p1[1]-y, p1[0]-x)
-	bc := math.Atan2(p2[1]-y, p2[0]-x)
-	angle := bc - ba
-	for angle > math.Pi {
-		angle -= 2 * math.Pi
-	}
-	for angle < -math.Pi {
-		angle += 2 * math.Pi
-	}
-	return math.Abs(angle)
-}
-
-func distSq(x1, y1, x2, y2 float64) float64 {
-	dx := x1 - x2
-	dy := y1 - y2
-	return dx*dx + dy*dy
 }

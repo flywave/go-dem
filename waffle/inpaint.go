@@ -17,12 +17,8 @@ func init() {
 	})
 }
 
-func (iw *inpaintWaffle) Run(sources []string, opts *Options) (*Result, error) {
-	pts, zs, err := collectPoints(sources)
-	if err != nil {
-		return nil, err
-	}
-	if len(pts) == 0 {
+func (iw *inpaintWaffle) Run(points []Point, opts *Options) (*Result, error) {
+	if len(points) == 0 {
 		return nil, nil
 	}
 
@@ -45,11 +41,11 @@ func (iw *inpaintWaffle) Run(sources []string, opts *Options) (*Result, error) {
 	}
 
 	gt := region.GeoTransform()
-	for i, pt := range pts {
-		px := int(math.Round((pt[0] - gt[0]) / gt[1]))
-		py := int(math.Round((pt[1] - gt[3]) / gt[5]))
+	for _, p := range points {
+		px := int(math.Round((p.Position[0] - gt[0]) / gt[1]))
+		py := int(math.Round((p.Position[1] - gt[3]) / gt[5]))
 		if px >= 0 && px < width && py >= 0 && py < height {
-			demData[py*width+px] = zs[i]
+			demData[py*width+px] = p.Z
 		}
 	}
 
@@ -58,9 +54,9 @@ func (iw *inpaintWaffle) Run(sources []string, opts *Options) (*Result, error) {
 }
 
 const (
-	BAND_KNOWN    = 0
-	BAND_BAND     = 1
-	BAND_INSIDE   = 2
+	BAND_KNOWN  = 0
+	BAND_BAND   = 1
+	BAND_INSIDE = 2
 )
 
 type fmmPixel struct {
@@ -219,10 +215,8 @@ func fmmInpaintValue(data []float64, flag []int, dist []float64, x, y, w, h int,
 			if data[nIdx] == noData || math.IsNaN(data[nIdx]) {
 				continue
 			}
-
 			d := math.Sqrt(float64(dx*dx + dy*dy))
 			weight := 1.0 / (d*d + 1e-15)
-
 			neighbors = append(neighbors, neighbor{val: data[nIdx], weight: weight})
 		}
 	}
@@ -243,45 +237,7 @@ func fmmInpaintValue(data []float64, flag []int, dist []float64, x, y, w, h int,
 	}
 
 	if sumWeight > 0 {
-		result := sumVal / sumWeight
-		return result
-	}
-	return noData
-}
-
-func fallbackIDW(data []float64, flag []int, x, y, w, h int, noData float64) float64 {
-	const maxSearch = 20
-	var sumVal, sumWeight float64
-
-	for r := 1; r <= maxSearch; r++ {
-		for dy := -r; dy <= r; dy++ {
-			for dx := -r; dx <= r; dx++ {
-				if dx == 0 && dy == 0 {
-					continue
-				}
-				if math.Abs(float64(dx)) != float64(r) && math.Abs(float64(dy)) != float64(r) {
-					continue
-				}
-				nx, ny := x+dx, y+dy
-				if nx < 0 || nx >= w || ny < 0 || ny >= h {
-					continue
-				}
-				nIdx := ny*w + nx
-				if flag[nIdx] != BAND_KNOWN {
-					continue
-				}
-				if data[nIdx] == noData || math.IsNaN(data[nIdx]) {
-					continue
-				}
-				d := math.Sqrt(float64(dx*dx + dy*dy))
-				w := 1.0 / (d + 1e-15)
-				sumVal += data[nIdx] * w
-				sumWeight += w
-			}
-		}
-		if sumWeight > 0 {
-			return sumVal / sumWeight
-		}
+		return sumVal / sumWeight
 	}
 	return noData
 }
@@ -328,6 +284,42 @@ func estimateGradientY(data []float64, flag []int, x, y, w, h int, noData float6
 	return (data[(y+1)*w+x] - data[(y-1)*w+x]) / 2
 }
 
+func fallbackIDW(data []float64, flag []int, x, y, w, h int, noData float64) float64 {
+	const maxSearch = 20
+	var sumVal, sumWeight float64
+	for r := 1; r <= maxSearch; r++ {
+		for dy := -r; dy <= r; dy++ {
+			for dx := -r; dx <= r; dx++ {
+				if dx == 0 && dy == 0 {
+					continue
+				}
+				if math.Abs(float64(dx)) != float64(r) && math.Abs(float64(dy)) != float64(r) {
+					continue
+				}
+				nx, ny := x+dx, y+dy
+				if nx < 0 || nx >= w || ny < 0 || ny >= h {
+					continue
+				}
+				nIdx := ny*w + nx
+				if flag[nIdx] != BAND_KNOWN {
+					continue
+				}
+				if data[nIdx] == noData || math.IsNaN(data[nIdx]) {
+					continue
+				}
+				d := math.Sqrt(float64(dx*dx + dy*dy))
+				w := 1.0 / (d + 1e-15)
+				sumVal += data[nIdx] * w
+				sumWeight += w
+			}
+		}
+		if sumWeight > 0 {
+			return sumVal / sumWeight
+		}
+	}
+	return noData
+}
+
 func finalFallbackValue(data []float64, idx, w, h int, noData float64) float64 {
 	x, y := idx%w, idx/w
 	searchDirs := [][2]int{
@@ -336,7 +328,6 @@ func finalFallbackValue(data []float64, idx, w, h int, noData float64) float64 {
 		{-2, 0}, {2, 0}, {0, -2}, {0, 2},
 		{-3, 0}, {3, 0}, {0, -3}, {0, 3},
 	}
-
 	var sum, count float64
 	for _, d := range searchDirs {
 		nx, ny := x+d[0], y+d[1]
@@ -355,5 +346,3 @@ func finalFallbackValue(data []float64, idx, w, h int, noData float64) float64 {
 	}
 	return noData
 }
-
-

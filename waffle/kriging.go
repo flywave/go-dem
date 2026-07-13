@@ -20,13 +20,9 @@ func init() {
 	})
 }
 
-func (w *krigingWaffle) Run(sources []string, opts *Options) (*Result, error) {
-	pts, zs, err := collectPoints(sources)
-	if err != nil {
-		return nil, err
-	}
-	if len(pts) == 0 {
-		return nil, fmt.Errorf("no valid data points found")
+func (w *krigingWaffle) Run(points []Point, opts *Options) (*Result, error) {
+	if len(points) == 0 {
+		return nil, fmt.Errorf("no data points")
 	}
 
 	region := opts.Region
@@ -35,9 +31,9 @@ func (w *krigingWaffle) Run(sources []string, opts *Options) (*Result, error) {
 		region.YSize = int(math.Round((region.BBox().Max[1] - region.BBox().Min[1]) / region.YRes))
 	}
 
-	pos := make([]vec3d.T, len(pts))
-	for i, pt := range pts {
-		pos[i] = vec3d.T{pt[0], pt[1], zs[i]}
+	pos := make([]vec3d.T, len(points))
+	for i, p := range points {
+		pos[i] = vec3d.T{p.Position[0], p.Position[1], p.Z}
 	}
 
 	model := kriging.New(pos)
@@ -45,7 +41,7 @@ func (w *krigingWaffle) Run(sources []string, opts *Options) (*Result, error) {
 	if modelType == "" {
 		modelType = kriging.Gaussian
 	}
-	_, err = model.Train(modelType, 0, 100)
+	_, err := model.Train(modelType, 0, 100)
 	if err != nil {
 		return nil, fmt.Errorf("kriging training failed: %v", err)
 	}

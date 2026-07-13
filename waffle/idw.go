@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/flywave/flywave-gdal"
 	"github.com/flywave/go-dem"
 	"github.com/flywave/go3d/float64/vec2"
 )
@@ -14,75 +13,19 @@ type idwWaffle struct {
 	power float64
 }
 
-func NewIDW(power float64) *idwWaffle {
-	return &idwWaffle{baseWaffle: baseWaffle{name: string(dem.MethodIDW)}, power: power}
-}
-
 func init() {
 	Register(dem.MethodIDW, func() Waffle {
 		return &idwWaffle{baseWaffle: baseWaffle{name: string(dem.MethodIDW)}, power: 2.0}
 	})
 }
 
-func (w *idwWaffle) Run(sources []string, opts *Options) (*Result, error) {
-	if len(sources) == 0 {
-		return nil, fmt.Errorf("no source data provided")
+func (w *idwWaffle) Run(points []Point, opts *Options) (*Result, error) {
+	if len(points) == 0 {
+		return nil, fmt.Errorf("no source points provided")
 	}
 	region := opts.Region
 	if region == nil {
 		return nil, fmt.Errorf("region is required")
-	}
-
-	if len(sources) == 1 && isLASFile(sources[0]) {
-		return w.runWithPointsToGrid(sources[0], region, opts)
-	}
-	return w.runMemoryIDW(sources, region, opts)
-}
-
-func (w *idwWaffle) runWithPointsToGrid(source string, region *dem.Region, opts *Options) (*Result, error) {
-	bbox := [4]float64{
-		region.BBox().Min[0], region.BBox().Min[1],
-		region.BBox().Max[0], region.BBox().Max[1],
-	}
-
-	gridOpts := &gdal.PointsToGridOptions{
-		InputFilePath:  source,
-		OutputFilePath: fmt.Sprintf("%s_idw.tif", source),
-		Resolution:     region.XRes,
-		EpsgCode:       4326,
-		Knn:            opts.MinPoints,
-		BBox:           &bbox,
-		BBoxEPSGCode:   4326,
-	}
-	if opts.UpperZ != nil {
-		gridOpts.MaxZ = opts.UpperZ
-	}
-	if opts.LowerZ != nil {
-		gridOpts.MinZ = opts.LowerZ
-	}
-	if opts.MinPoints <= 0 {
-		gridOpts.Knn = 3
-	}
-
-	err := gdal.PointsToGrid(gridOpts)
-	if err != nil {
-		return nil, fmt.Errorf("points to grid failed: %v", err)
-	}
-
-	data, _, err := dem.ReadDEM(gridOpts.OutputFilePath)
-	if err != nil {
-		return nil, fmt.Errorf("read grid result: %v", err)
-	}
-	return &Result{DEM: data, Region: region}, nil
-}
-
-func (w *idwWaffle) runMemoryIDW(sources []string, region *dem.Region, opts *Options) (*Result, error) {
-	pts, zs, err := collectPoints(sources)
-	if err != nil {
-		return nil, err
-	}
-	if len(pts) == 0 {
-		return nil, fmt.Errorf("no valid data points found in sources")
 	}
 
 	if region.XSize <= 0 || region.YSize <= 0 {
@@ -97,6 +40,13 @@ func (w *idwWaffle) runMemoryIDW(sources []string, region *dem.Region, opts *Opt
 	}
 	for i := range demData {
 		demData[i] = noData
+	}
+
+	pts := make([]vec2.T, len(points))
+	zs := make([]float64, len(points))
+	for i, p := range points {
+		pts[i] = p.Position
+		zs[i] = p.Z
 	}
 
 	kdtree := NewKDTree(pts)
@@ -123,78 +73,31 @@ func (w *idwWaffle) runMemoryIDW(sources []string, region *dem.Region, opts *Opt
 			if len(idxs) < minPoints {
 				idxs2, dists2 := kdtree.KNN(q, minPoints)
 				if len(idxs2) >= minPoints {
-					var sumWeight, sumValue float64
-					for i, idx := range idxs2 {
-						d := dists2[i]
-						if d < 1e-10 {
-							sumValue = zs[idx]
-							sumWeight = 1
-							break
-						}
-						weight := 1.0 / math.Pow(d, power)
-						sumWeight += weight
-						sumValue += weight * zs[idx]
-					}
-					if sumWeight > 0 {
-						demData[y*region.XSize+x] = sumValue / sumWeight
-					}
+					demData[y*region.XSize+x] = weightedIDW(idxs2, dists2, zs, power)
 				}
 				continue
 			}
 
-			var sumWeight, sumValue float64
-			for i, idx := range idxs {
-				d := dists[i]
-				if d < 1e-10 {
-					sumValue = zs[idx]
-					sumWeight = 1
-					break
-				}
-				weight := 1.0 / math.Pow(d, power)
-				sumWeight += weight
-				sumValue += weight * zs[idx]
-			}
-
-			if minPoints <= len(idxs) && sumWeight > 0 {
-				demData[y*region.XSize+x] = sumValue / sumWeight
-			}
+			demData[y*region.XSize+x] = weightedIDW(idxs, dists, zs, power)
 		}
 	}
 
 	return &Result{DEM: demData, Region: region}, nil
 }
 
-func collectPoints(sources []string) ([]vec2.T, []float64, error) {
-	var pts []vec2.T
-	var zs []float64
-
-	for _, src := range sources {
-		data, srcRegion, err := dem.ReadDEM(src)
-		if err != nil {
-			return nil, nil, fmt.Errorf("read %s: %v", src, err)
+func weightedIDW(idxs []int, dists []float64, zs []float64, power float64) float64 {
+	var sumWeight, sumValue float64
+	for i, idx := range idxs {
+		d := dists[i]
+		if d < 1e-10 {
+			return zs[idx]
 		}
-		gt := srcRegion.GeoTransform()
-		noData := dem.DefaultNoData
-		for y := 0; y < srcRegion.YSize; y++ {
-			for x := 0; x < srcRegion.XSize; x++ {
-				z := data[y*srcRegion.XSize+x]
-				if z == noData || math.IsNaN(z) {
-					continue
-				}
-				geoX := gt[0] + float64(x)*gt[1] + float64(y)*gt[2]
-				geoY := gt[3] + float64(x)*gt[4] + float64(y)*gt[5]
-				pts = append(pts, vec2.T{geoX, geoY})
-				zs = append(zs, z)
-			}
-		}
+		weight := 1.0 / math.Pow(d, power)
+		sumWeight += weight
+		sumValue += weight * zs[idx]
 	}
-	return pts, zs, nil
-}
-
-func isLASFile(path string) bool {
-	if len(path) < 4 {
-		return false
+	if sumWeight > 0 {
+		return sumValue / sumWeight
 	}
-	ext := path[len(path)-4:]
-	return ext == ".las" || ext == ".laz"
+	return 0
 }

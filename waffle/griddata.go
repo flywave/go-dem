@@ -52,7 +52,6 @@ func buildTriangleGridIndex(triList [][3]int, pts []vec2.T, gridSize int) triang
 		xMax: xMax, yMax: yMax,
 		cells: make([]gridCell, gw*gh),
 	}
-
 	for i := range idx.cells {
 		idx.cells[i].triIndices = make([]int, 0)
 	}
@@ -63,7 +62,6 @@ func buildTriangleGridIndex(triList [][3]int, pts []vec2.T, gridSize int) triang
 		cxMax := int(math.Floor((bbox[1] - xMin) / (xMax - xMin) * float64(gw)))
 		cyMin := int(math.Floor((bbox[2] - yMin) / (yMax - yMin) * float64(gh)))
 		cyMax := int(math.Floor((bbox[3] - yMin) / (yMax - yMin) * float64(gh)))
-
 		if cxMin < 0 {
 			cxMin = 0
 		}
@@ -76,14 +74,12 @@ func buildTriangleGridIndex(triList [][3]int, pts []vec2.T, gridSize int) triang
 		if cyMax >= gh {
 			cyMax = gh - 1
 		}
-
 		for cy := cyMin; cy <= cyMax; cy++ {
 			for cx := cxMin; cx <= cxMax; cx++ {
 				idx.cells[cy*gw+cx].triIndices = append(idx.cells[cy*gw+cx].triIndices, ti)
 			}
 		}
 	}
-
 	return idx
 }
 
@@ -108,19 +104,22 @@ func init() {
 	})
 }
 
-func (w *griddataWaffle) Run(sources []string, opts *Options) (*Result, error) {
-	pts, zs, err := collectPoints(sources)
-	if err != nil {
-		return nil, err
-	}
-	if len(pts) < 3 {
-		return nil, fmt.Errorf("need at least 3 points for triangulation, got %d", len(pts))
+func (w *griddataWaffle) Run(points []Point, opts *Options) (*Result, error) {
+	if len(points) < 3 {
+		return nil, fmt.Errorf("need at least 3 points for triangulation, got %d", len(points))
 	}
 
 	region := opts.Region
 	if region.XSize <= 0 || region.YSize <= 0 {
 		region.XSize = int(math.Round((region.BBox().Max[0] - region.BBox().Min[0]) / region.XRes))
 		region.YSize = int(math.Round((region.BBox().Max[1] - region.BBox().Min[1]) / region.YRes))
+	}
+
+	pts := make([]vec2.T, len(points))
+	zs := make([]float64, len(points))
+	for i, p := range points {
+		pts[i] = p.Position
+		zs[i] = p.Z
 	}
 
 	delaunayPts := make([]delaunay.Point, len(pts))
@@ -155,14 +154,13 @@ func (w *griddataWaffle) Run(sources []string, opts *Options) (*Result, error) {
 		noData = dem.DefaultNoData
 	}
 
-	demData := w.interpolate(region, tri, triList, pts, zs, noData, &gridIdx)
+	demData := interpolateGrid(region, w.method, triList, pts, zs, noData, &gridIdx)
 
 	return &Result{DEM: demData, Region: region}, nil
 }
 
-func (w *griddataWaffle) interpolate(region *dem.Region, tri *delaunay.Triangulation,
-	triList [][3]int, pts []vec2.T, zs []float64, noData float64,
-	gridIdx *triangleGridIndex) []float64 {
+func interpolateGrid(region *dem.Region, method string, triList [][3]int,
+	pts []vec2.T, zs []float64, noData float64, gridIdx *triangleGridIndex) []float64 {
 
 	demData := make([]float64, region.XSize*region.YSize)
 	for i := range demData {
@@ -178,7 +176,7 @@ func (w *griddataWaffle) interpolate(region *dem.Region, tri *delaunay.Triangula
 			geoX := gt[0] + float64(x)*gt[1] + float64(y)*gt[2]
 			geoY := gt[3] + float64(x)*gt[4] + float64(y)*gt[5]
 
-			val := w.interpAtPoint(geoX, geoY, triList, pts, zs, gridIdx)
+			val := interpAtPoint(geoX, geoY, method, triList, pts, zs, gridIdx)
 			if !math.IsNaN(val) {
 				demData[y*width+x] = val
 			}
@@ -187,88 +185,13 @@ func (w *griddataWaffle) interpolate(region *dem.Region, tri *delaunay.Triangula
 	return demData
 }
 
-func (w *griddataWaffle) interpAtPoint(geoX, geoY float64, triList [][3]int,
+func interpAtPoint(geoX, geoY float64, method string, triList [][3]int,
 	pts []vec2.T, zs []float64, gridIdx *triangleGridIndex) float64 {
 
-	switch w.method {
+	switch method {
 	case "nearest":
 		return nearestInterp(geoX, geoY, pts, zs)
-	case "linear", "cubic":
-		return linearInterpGrid(geoX, geoY, triList, pts, zs, gridIdx)
 	default:
 		return linearInterpGrid(geoX, geoY, triList, pts, zs, gridIdx)
 	}
 }
-
-func nearestInterp(x, y float64, pts []vec2.T, zs []float64) float64 {
-	if len(pts) == 0 {
-		return math.NaN()
-	}
-	minDist := math.MaxFloat64
-	bestZ := 0.0
-	for i, pt := range pts {
-		dx := x - pt[0]
-		dy := y - pt[1]
-		dist := dx*dx + dy*dy
-		if dist < minDist {
-			minDist = dist
-			bestZ = zs[i]
-		}
-	}
-	return bestZ
-}
-
-func linearInterpGrid(x, y float64, triList [][3]int, pts []vec2.T, zs []float64,
-	gridIdx *triangleGridIndex) float64 {
-
-	candidateTris := gridIdx.findTriangles(x, y)
-	if candidateTris == nil {
-		candidateTris = make([]int, len(triList))
-		for i := range triList {
-			candidateTris[i] = i
-		}
-	}
-
-	for _, ti := range candidateTris {
-		if ti >= len(triList) {
-			continue
-		}
-		t := triList[ti]
-		p0, p1, p2 := pts[t[0]], pts[t[1]], pts[t[2]]
-		z0, z1, z2 := zs[t[0]], zs[t[1]], zs[t[2]]
-
-		val, found := barycentricInterp(x, y, p0, p1, p2, z0, z1, z2)
-		if found {
-			return val
-		}
-	}
-
-	return math.NaN()
-}
-
-func boundingBox(tri [3]int, pts []vec2.T) [4]float64 {
-	xMin := math.Min(pts[tri[0]][0], math.Min(pts[tri[1]][0], pts[tri[2]][0]))
-	xMax := math.Max(pts[tri[0]][0], math.Max(pts[tri[1]][0], pts[tri[2]][0]))
-	yMin := math.Min(pts[tri[0]][1], math.Min(pts[tri[1]][1], pts[tri[2]][1]))
-	yMax := math.Max(pts[tri[0]][1], math.Max(pts[tri[1]][1], pts[tri[2]][1]))
-	return [4]float64{xMin, xMax, yMin, yMax}
-}
-
-func barycentricInterp(x, y float64, p0, p1, p2 vec2.T, z0, z1, z2 float64) (float64, bool) {
-	denom := (p1[1]-p2[1])*(p0[0]-p2[0]) + (p2[0]-p1[0])*(p0[1]-p2[1])
-	if math.Abs(denom) < 1e-15 {
-		return 0, false
-	}
-
-	w0 := ((p1[1]-p2[1])*(x-p2[0]) + (p2[0]-p1[0])*(y-p2[1])) / denom
-	w1 := ((p2[1]-p0[1])*(x-p2[0]) + (p0[0]-p2[0])*(y-p2[1])) / denom
-	w2 := 1 - w0 - w1
-
-	if w0 < -1e-10 || w1 < -1e-10 || w2 < -1e-10 {
-		return 0, false
-	}
-
-	return w0*z0 + w1*z1 + w2*z2, true
-}
-
-

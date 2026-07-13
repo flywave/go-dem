@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/flywave/go-dem"
-	"github.com/flywave/go-dem/datalist"
 	"github.com/flywave/go-dem/waffle"
 	"github.com/flywave/go-geo"
 )
@@ -44,9 +43,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	dataList, err := datalist.BuildDataList(sources)
+	points, err := waffle.PointsFromMultiple(sources)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "build datalist: %v\n", err)
+		fmt.Fprintf(os.Stderr, "load points: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -62,12 +61,7 @@ func main() {
 		NoData: *noData,
 	}
 
-	var inputPaths []string
-	for _, entry := range dataList.Entries {
-		inputPaths = append(inputPaths, entry.Path)
-	}
-
-	result, err := w.Run(inputPaths, opts)
+	result, err := w.Run(points, opts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "waffle run failed: %v\n", err)
 		os.Exit(1)
@@ -78,5 +72,5 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("DEM written to %s\n", *output)
+	fmt.Printf("DEM written to %s (%d points -> %dx%d grid)\n", *output, len(points), region.XSize, region.YSize)
 }
