@@ -58,7 +58,7 @@ add_library(hdf5-static STATIC IMPORTED)
 
 set_target_properties(hdf5-static PROPERTIES
   INTERFACE_INCLUDE_DIRECTORIES "${_IMPORT_PREFIX}/include;${_IMPORT_PREFIX}/include"
-  INTERFACE_LINK_LIBRARIES "\$<LINK_ONLY:m>;\$<LINK_ONLY:dl>;\$<LINK_ONLY:Threads::Threads>;\$<LINK_ONLY:ZLIB::ZLIB>"
+
 )
 
 # Create imported target hdf5_hl-static
@@ -66,7 +66,7 @@ add_library(hdf5_hl-static STATIC IMPORTED)
 
 set_target_properties(hdf5_hl-static PROPERTIES
   INTERFACE_INCLUDE_DIRECTORIES "${_IMPORT_PREFIX}/include;${_IMPORT_PREFIX}/include"
-  INTERFACE_LINK_LIBRARIES "hdf5-static"
+
 )
 
 # Load information for each installed configuration.

@@ -56,6 +56,8 @@
 #include <curl/curl.h>
 #else
 #include <stdbool.h>
+#include <unistd.h>
+#include <limits.h>
 #endif
 #ifdef WIN32
 #include <sys/utime.h>
@@ -2042,7 +2044,23 @@ struct GMT_RESOLUTION *gmt_remote_resolutions (struct GMTAPI_CTRL *API, const ch
 	gmt_M_unused (API); gmt_M_unused (rfile); if (n) *n = 0; return NULL;
 }
 int gmt_set_remote_and_local_filenames (struct GMT_CTRL *GMT, const char * file, char *local_path, char *remote_path, unsigned int mode) {
-	gmt_M_unused (GMT); gmt_M_unused (file); gmt_M_unused (local_path); gmt_M_unused (remote_path); gmt_M_unused (mode);
+	/* Minimal stub: handle absolute paths locally; reject remote files */
+	struct GMTAPI_CTRL *API = GMT->parent;
+	local_path[0] = remote_path[0] = '\0';
+	if (!file || !file[0]) return GMT_ARG_IS_NULL;
+	if (file[0] == '/') {  /* Absolute path — check locally */
+		if (access(file, F_OK)) {
+			GMT_Report(API, GMT_MSG_ERROR, "File %s was not found\n", file);
+			return GMT_FILE_NOT_FOUND;
+		}
+		if (access(file, R_OK)) {
+			GMT_Report(API, GMT_MSG_ERROR, "File %s is not readable\n", file);
+			return GMT_BAD_PERMISSION;
+		}
+		strncpy(local_path, file, PATH_MAX-1);
+		return GMT_NOERROR;
+	}
+	GMT_Report(API, GMT_MSG_ERROR, "Remote file access is disabled (GMT_NO_CURL)\n");
 	return GMT_RUNTIME_ERROR;
 }
 int gmt_set_unspecified_remote_registration (struct GMTAPI_CTRL *API, char **file_ptr) {

@@ -135,22 +135,20 @@ endif (WIN32)
 ##
 message (STATUS "Searching dependent libraries. This may take a few minutes...")
 
-# NetCDF is required
-find_package (NETCDF REQUIRED)
+# NetCDF — variables set by parent CMake
 include_directories (${NETCDF_INCLUDE_DIR})
+list (APPEND GMT_OPTIONAL_LIBRARIES ${NETCDF_LIBRARY})
 
-# libcurl is required since GMT 5.4
-# At least version 7.55.0 is needed for src/gmt_remote.c
+# libcurl — disabled via GMT_NO_CURL
 if (NOT GMT_NO_CURL)
   find_package (CURL 7.55.0 REQUIRED)
   include_directories (${CURL_INCLUDE_DIRS})
   list (APPEND GMT_OPTIONAL_LIBRARIES ${CURL_LIBRARIES})
-  set (CURL_LIBRARY ${CURL_LIBRARIES} CACHE INTERNAL "")
 endif()
 
-find_package (GDAL REQUIRED)
+# GDAL — variables set by parent CMake
 include_directories (${GDAL_INCLUDE_DIR})
-list (APPEND GMT_OPTIONAL_LIBRARIES ${GDAL_LIBRARIES})
+list (APPEND GMT_OPTIONAL_LIBRARIES ${GDAL_LIBRARY})
 
 if (NOT DEFINED GMT_EXCLUDE_GEOS)
 	find_package (GEOS)
@@ -543,7 +541,7 @@ add_dependencies (gmtlib gen_gmt_headers) # make gmtlib after gen_gmt_headers
 add_dependencies (gmtlib pslib) # make gmtlib after pslib
 
 target_link_libraries (gmtlib
-	${NETCDF_LIBRARIES}
+	netcdf
 	${GMT_OPTIONAL_LIBRARIES}
 	pslib)
 
@@ -600,7 +598,7 @@ target_link_libraries (psldemo pslib)
 add_executable (gshhg_version gshhg_version.h gshhg_version.c)
 set_target_properties (gshhg_version
 	PROPERTIES COMPILE_DEFINITIONS "STANDALONE")
-target_link_libraries (gshhg_version ${NETCDF_LIBRARIES})
+target_link_libraries (gshhg_version netcdf)
 
 # script2verbatim for removing comments, replacing -ps from example scripts
 add_executable (script2verbatim script2verbatim.c)

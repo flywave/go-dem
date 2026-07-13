@@ -19,7 +19,7 @@ func TestSurfaceSmall(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	xyzPath := filepath.Join(dir, "test.xyz")
-	grdPath := filepath.Join(dir, "test.tif")
+	grdPath := filepath.Join(dir, "test.grd")
 
 	// Create a small XYZ file with known data
 	xyz := []string{
@@ -69,7 +69,7 @@ func TestBlockmeanSmall(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	xyzPath := filepath.Join(dir, "test.xyz")
-	outPath := filepath.Join(dir, "blockmean.tif")
+	outPath := filepath.Join(dir, "blockmean.grd")
 
 	xyz := []string{
 		"0.0 0.0 100.0\n",
@@ -109,7 +109,7 @@ func TestNearneighborSmall(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	xyzPath := filepath.Join(dir, "test.xyz")
-	grdPath := filepath.Join(dir, "nn.tif")
+	grdPath := filepath.Join(dir, "nn.grd")
 
 	xyz := []string{
 		"0.0 0.0 100.0\n",
@@ -151,7 +151,7 @@ func TestTriangulateSmall(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	xyzPath := filepath.Join(dir, "test.xyz")
-	grdPath := filepath.Join(dir, "tri.tif")
+	grdPath := filepath.Join(dir, "tri.grd")
 
 	xyz := []string{
 		"0.0 0.0 100.0\n",
