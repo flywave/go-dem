@@ -9,7 +9,21 @@ import (
 	"github.com/flywave/go-dem/dem/gmt"
 )
 
-type gmtFilter struct{ baseGrits }
+type GMTFilterType string
+
+const (
+	GMTBoxcar    GMTFilterType = "b"
+	GMTCosine    GMTFilterType = "c"
+	GMTGaussian  GMTFilterType = "g"
+	GTMMedian    GMTFilterType = "m"
+	GMTMaxLike   GMTFilterType = "p"
+	GTMLower     GMTFilterType = "l"
+	GMTUpper     GMTFilterType = "u"
+)
+
+type gmtFilter struct {
+	baseGrits
+}
 
 func init() {
 	Register("gmt_filter", func() Grits {
