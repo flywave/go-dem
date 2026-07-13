@@ -2,12 +2,10 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.1.3)
 
 PROJECT(go-dem C CXX Fortran)
 
-# Set build type
 IF(NOT CMAKE_BUILD_TYPE)
   SET(CMAKE_BUILD_TYPE Release CACHE STRING
-      "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel."
-      FORCE)
-ENDIF(NOT CMAKE_BUILD_TYPE)
+      "Choose the type of build: None Debug Release RelWithDebInfo MinSizeRel." FORCE)
+ENDIF()
 
 # Platform-specific library output
 Set(FLYWAVE_BASE_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs")
@@ -36,14 +34,39 @@ IF(UNIX OR APPLE)
   SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC -Wall")
 ENDIF()
 
-# Build HTDP as external library
+# HTDP (Fortran)
 IF(NOT HTDP_INCLUDE)
   ADD_SUBDIRECTORY("${CMAKE_CURRENT_SOURCE_DIR}/external/HTDP")
-
-  LIST(APPEND FLYWAVE_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/external/HTDP/capi")
-  LIST(APPEND FLYWAVE_LIBRARY_DEPES "htdp")
-
   SET(HTDP_INCLUDE YES)
+ENDIF()
+
+# GMT (C, requires prebuilt HDF5 + netCDF)
+# Build HDF5 first:
+#   cd external/hdf5 && mkdir build && cd build
+#   cmake .. -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF \
+#     -DHDF5_BUILD_TOOLS=OFF -DHDF5_BUILD_EXAMPLES=OFF \
+#     -DHDF5_BUILD_FORTRAN=OFF -DHDF5_BUILD_CPP_LIB=OFF \
+#     -DHDF5_BUILD_JAVA=OFF -DHDF5_BUILD_HL_LIB=OFF \
+#     -DHDF5_ENABLE_ZLIB_SUPPORT=OFF -DHDF5_ENABLE_PARALLEL=OFF \
+#     -DCMAKE_INSTALL_PREFIX=../../libs/darwin_arm
+#   cmake --build . --target install -j8
+#
+# Then build netCDF:
+#   cd external/netcdf && mkdir build && cd build
+#   cmake .. -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF \
+#     -DENABLE_DAP=OFF -DENABLE_BYTERANGE=OFF \
+#     -DNETCDF_ENABLE_HDF5=ON -DNETCDF_ENABLE_NCZARR=OFF \
+#     -DHDF5_ROOT=../../libs/darwin_arm \
+#     -DCMAKE_INSTALL_PREFIX=../../libs/darwin_arm
+#   cmake --build . --target install -j8
+
+IF(NOT GMT_INCLUDE)
+  ADD_SUBDIRECTORY("${CMAKE_CURRENT_SOURCE_DIR}/external/gmt")
+
+  LIST(APPEND FLYWAVE_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/external/gmt/src")
+  LIST(APPEND FLYWAVE_LIBRARY_DEPES "gmt")
+
+  SET(GMT_INCLUDE YES)
 ENDIF()
 
 # Install output
