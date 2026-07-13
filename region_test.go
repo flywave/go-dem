@@ -2,9 +2,11 @@ package dem
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/flywave/go-geo"
+	"github.com/flywave/go-geoid"
 )
 
 func TestNewRegionFromBBox(t *testing.T) {
@@ -126,6 +128,75 @@ func TestNewRegionFromStringInvalid(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for invalid format")
 	}
+}
+
+func TestVerticalDatumEPSG(t *testing.T) {
+	code, name := verticalDatumEPSG(geoid.EGM96)
+	if code != 5773 {
+		t.Errorf("EGM96: expected 5773, got %d", code)
+	}
+	if !strings.Contains(name, "EGM96") {
+		t.Errorf("EGM96 name: expected EGM96, got %s", name)
+	}
+
+	code, name = verticalDatumEPSG(geoid.EGM2008)
+	if code != 3855 {
+		t.Errorf("EGM2008: expected 3855, got %d", code)
+	}
+
+	code, name = verticalDatumEPSG(geoid.EGM84)
+	if code != 5798 {
+		t.Errorf("EGM84: expected 5798, got %d", code)
+	}
+
+	code, _ = verticalDatumEPSG(geoid.HAE)
+	if code != 0 {
+		t.Errorf("HAE: expected 0, got %d", code)
+	}
+}
+
+func TestResolveOutputCRS_HorizontalOnly(t *testing.T) {
+	srs := geo.NewProj("EPSG:4326")
+	reg := NewRegionFromBBox(-180, -90, 180, 90, srs, 1, 1)
+	cfg := OutputConfig{CRS: "EPSG:4326"}
+	crs := resolveOutputCRS(cfg, reg)
+	if crs == "" {
+		t.Fatal("empty CRS")
+	}
+	if !strings.Contains(crs, "4326") && !strings.Contains(crs, "WGS 84") {
+		t.Logf("CRS string: %s", crs[:min(80, len(crs))])
+	}
+}
+
+func TestResolveOutputCRS_WithVerticalDatum(t *testing.T) {
+	srs := geo.NewProj("EPSG:4326")
+	reg := NewRegionFromBBox(-180, -90, 180, 90, srs, 1, 1)
+	cfg := OutputConfig{
+		CRS:           "EPSG:4326",
+		VerticalDatum: geoid.EGM96,
+	}
+	crs := resolveOutputCRS(cfg, reg)
+	if crs == "" {
+		t.Fatal("empty CRS")
+	}
+	t.Logf("compound CRS: %s", crs)
+}
+
+func TestResolveOutputCRS_FromRegion(t *testing.T) {
+	srs := geo.NewProj("EPSG:4326")
+	reg := NewRegionFromBBox(-180, -90, 180, 90, srs, 1, 1)
+	cfg := OutputConfig{}
+	crs := resolveOutputCRS(cfg, reg)
+	if crs == "" {
+		t.Fatal("empty CRS")
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func TestIsNoData(t *testing.T) {

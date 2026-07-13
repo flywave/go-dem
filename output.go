@@ -3,20 +3,23 @@ package dem
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/flywave/flywave-gdal"
 	"github.com/flywave/go-geo"
+	"github.com/flywave/go-geoid"
 )
 
 type OutputConfig struct {
-	Format     string
-	DataType   gdal.DataType
-	Compress   string
-	Tiled      bool
-	BlockXSize int
-	BlockYSize int
-	NoData     float64
-	CRS        string
+	Format        string
+	DataType      gdal.DataType
+	Compress      string
+	Tiled         bool
+	BlockXSize    int
+	BlockYSize    int
+	NoData        float64
+	CRS           string
+	VerticalDatum geoid.VerticalDatum
 }
 
 var DefaultGTiffConfig = OutputConfig{
@@ -54,13 +57,66 @@ func buildProfileConfig(region *Region, bands int, cfg OutputConfig) gdal.Profil
 		}
 	}
 
-	if cfg.CRS != "" {
-		profile = profile.Update(gdal.WithCRS(cfg.CRS))
-	} else if crsStr := region.SRS().GetDef(); crsStr != "" {
+	crsStr := resolveOutputCRS(cfg, region)
+	if crsStr != "" {
 		profile = profile.Update(gdal.WithCRS(crsStr))
 	}
 
 	return profile
+}
+
+func verticalDatumEPSG(vd geoid.VerticalDatum) (code int, name string) {
+	switch vd {
+	case geoid.EGM84:
+		return 5798, "EGM84 height"
+	case geoid.EGM96:
+		return 5773, "EGM96 geoid height"
+	case geoid.EGM2008:
+		return 3855, "EGM2008 geoid height"
+	default:
+		return 0, ""
+	}
+}
+
+func resolveOutputCRS(cfg OutputConfig, region *Region) string {
+	hCRS := cfg.CRS
+	if hCRS == "" {
+		hCRS = region.SRS().GetDef()
+	}
+	if hCRS == "" {
+		return ""
+	}
+
+	var hWkt string
+	if strings.HasPrefix(hCRS, "EPSG:") || strings.HasPrefix(hCRS, "+proj=") {
+		if crs, err := gdal.NewCRS(hCRS); err == nil {
+			if wkt, err := crs.ToWKT(); err == nil && wkt != "" {
+				hWkt = wkt
+			}
+		}
+	}
+	if hWkt == "" {
+		hWkt = hCRS
+	}
+
+	if cfg.VerticalDatum != geoid.HAE && cfg.VerticalDatum != geoid.UNKNOWN {
+		vEPSG, vName := verticalDatumEPSG(cfg.VerticalDatum)
+		if vEPSG > 0 {
+			vCrs, err := gdal.NewCRS(fmt.Sprintf("EPSG:%d", vEPSG))
+			if err == nil {
+				vWkt, err := vCrs.ToWKT()
+				if err == nil && vWkt != "" {
+					compound := fmt.Sprintf(
+						`COMPD_CS["%s + %s",%s,%s]`,
+						hCRS, vName, hWkt, vWkt,
+					)
+					return compound
+				}
+			}
+		}
+	}
+
+	return hWkt
 }
 
 func buildProfile(region *Region, bands int, noData float64) gdal.Profile {
