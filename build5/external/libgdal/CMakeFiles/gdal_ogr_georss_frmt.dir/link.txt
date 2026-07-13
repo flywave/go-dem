@@ -1,2 +1,0 @@
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_ogr_georss_frmt.a CMakeFiles/gdal_ogr_georss_frmt.dir/gdal/ogr/ogrsf_frmts/georss/ogrgeorssdatasource.cpp.o CMakeFiles/gdal_ogr_georss_frmt.dir/gdal/ogr/ogrsf_frmts/georss/ogrgeorssdriver.cpp.o CMakeFiles/gdal_ogr_georss_frmt.dir/gdal/ogr/ogrsf_frmts/georss/ogrgeorsslayer.cpp.o
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_ogr_georss_frmt.a

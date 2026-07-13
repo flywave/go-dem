@@ -1,2 +1,0 @@
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_tsx_frmt.a CMakeFiles/gdal_tsx_frmt.dir/gdal/frmts/tsx/tsxdataset.cpp.o
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_tsx_frmt.a

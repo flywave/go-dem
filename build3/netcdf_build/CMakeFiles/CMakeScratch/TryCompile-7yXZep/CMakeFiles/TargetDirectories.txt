@@ -1,3 +1,0 @@
-/Users/xuning/Work/go-dem/build3/netcdf_build/CMakeFiles/CMakeScratch/TryCompile-7yXZep/CMakeFiles/cmTC_31cfa.dir
-/Users/xuning/Work/go-dem/build3/netcdf_build/CMakeFiles/CMakeScratch/TryCompile-7yXZep/CMakeFiles/edit_cache.dir
-/Users/xuning/Work/go-dem/build3/netcdf_build/CMakeFiles/CMakeScratch/TryCompile-7yXZep/CMakeFiles/rebuild_cache.dir

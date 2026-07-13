@@ -1,2 +1,0 @@
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_map_frmt.a CMakeFiles/gdal_map_frmt.dir/gdal/frmts/map/mapdataset.cpp.o
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_map_frmt.a

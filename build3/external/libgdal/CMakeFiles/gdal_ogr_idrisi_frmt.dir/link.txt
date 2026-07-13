@@ -1,2 +1,0 @@
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_ogr_idrisi_frmt.a CMakeFiles/gdal_ogr_idrisi_frmt.dir/gdal/ogr/ogrsf_frmts/idrisi/ogridrisidatasource.cpp.o CMakeFiles/gdal_ogr_idrisi_frmt.dir/gdal/ogr/ogrsf_frmts/idrisi/ogridrisidriver.cpp.o CMakeFiles/gdal_ogr_idrisi_frmt.dir/gdal/ogr/ogrsf_frmts/idrisi/ogridrisilayer.cpp.o
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_ogr_idrisi_frmt.a

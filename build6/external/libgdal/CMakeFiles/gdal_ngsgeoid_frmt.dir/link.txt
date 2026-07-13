@@ -1,2 +1,0 @@
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_ngsgeoid_frmt.a CMakeFiles/gdal_ngsgeoid_frmt.dir/gdal/frmts/ngsgeoid/ngsgeoiddataset.cpp.o
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_ngsgeoid_frmt.a

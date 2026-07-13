@@ -1,2 +1,0 @@
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_blx_frmt.a CMakeFiles/gdal_blx_frmt.dir/gdal/frmts/blx/blx.c.o CMakeFiles/gdal_blx_frmt.dir/gdal/frmts/blx/blxdataset.cpp.o
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_blx_frmt.a

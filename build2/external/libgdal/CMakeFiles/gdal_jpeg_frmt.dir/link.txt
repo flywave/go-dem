@@ -1,2 +1,0 @@
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_jpeg_frmt.a CMakeFiles/gdal_jpeg_frmt.dir/gdal/frmts/jpeg/jpgdataset_12.cpp.o CMakeFiles/gdal_jpeg_frmt.dir/gdal/frmts/jpeg/jpgdataset.cpp.o CMakeFiles/gdal_jpeg_frmt.dir/gdal/frmts/jpeg/vsidataio_12.cpp.o CMakeFiles/gdal_jpeg_frmt.dir/gdal/frmts/jpeg/vsidataio.cpp.o
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_jpeg_frmt.a

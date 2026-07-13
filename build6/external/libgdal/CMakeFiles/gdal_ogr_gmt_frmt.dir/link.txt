@@ -1,2 +1,0 @@
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_ogr_gmt_frmt.a CMakeFiles/gdal_ogr_gmt_frmt.dir/gdal/ogr/ogrsf_frmts/gmt/ogrgmtdatasource.cpp.o CMakeFiles/gdal_ogr_gmt_frmt.dir/gdal/ogr/ogrsf_frmts/gmt/ogrgmtdriver.cpp.o CMakeFiles/gdal_ogr_gmt_frmt.dir/gdal/ogr/ogrsf_frmts/gmt/ogrgmtlayer.cpp.o
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_ogr_gmt_frmt.a

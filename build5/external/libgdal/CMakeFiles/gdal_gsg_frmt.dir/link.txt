@@ -1,2 +1,0 @@
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_gsg_frmt.a CMakeFiles/gdal_gsg_frmt.dir/gdal/frmts/gsg/gs7bgdataset.cpp.o CMakeFiles/gdal_gsg_frmt.dir/gdal/frmts/gsg/gsagdataset.cpp.o CMakeFiles/gdal_gsg_frmt.dir/gdal/frmts/gsg/gsbgdataset.cpp.o
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_gsg_frmt.a

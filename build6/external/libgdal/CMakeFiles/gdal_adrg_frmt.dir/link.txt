@@ -1,2 +1,0 @@
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_adrg_frmt.a CMakeFiles/gdal_adrg_frmt.dir/gdal/frmts/adrg/adrgdataset.cpp.o CMakeFiles/gdal_adrg_frmt.dir/gdal/frmts/adrg/srpdataset.cpp.o
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_adrg_frmt.a

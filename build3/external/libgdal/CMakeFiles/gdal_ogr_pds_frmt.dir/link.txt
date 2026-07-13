@@ -1,2 +1,0 @@
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_ogr_pds_frmt.a CMakeFiles/gdal_ogr_pds_frmt.dir/gdal/ogr/ogrsf_frmts/pds/ogrpdsdatasource.cpp.o CMakeFiles/gdal_ogr_pds_frmt.dir/gdal/ogr/ogrsf_frmts/pds/ogrpdsdriver.cpp.o CMakeFiles/gdal_ogr_pds_frmt.dir/gdal/ogr/ogrsf_frmts/pds/ogrpdslayer.cpp.o
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_ogr_pds_frmt.a

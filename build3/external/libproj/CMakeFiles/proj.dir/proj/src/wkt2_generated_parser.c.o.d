@@ -1,4 +1,0 @@
-external/libproj/CMakeFiles/proj.dir/proj/src/wkt2_generated_parser.c.o: \
-  /Users/xuning/Work/go-dem/external/libproj/proj/src/wkt2_generated_parser.c \
-  /Users/xuning/Work/go-dem/external/libproj/proj/src/wkt2_parser.h \
-  /Users/xuning/Work/go-dem/external/libproj/proj/src/wkt2_generated_parser.h
