@@ -90,7 +90,7 @@ set (${HDF5_PACKAGE_NAME}_PROVIDES_STATIC_TOOLS    ON)
 #-----------------------------------------------------------------------------
 set (${HDF5_PACKAGE_NAME}_PROVIDES_NONSTANDARD_FEATURE_FLOAT16 ON)
 #-----------------------------------------------------------------------------
-set (${HDF5_PACKAGE_NAME}_PROVIDES_ZLIB_SUPPORT   OFF)
+set (${HDF5_PACKAGE_NAME}_PROVIDES_ZLIB_SUPPORT   ON)
 set (${HDF5_PACKAGE_NAME}_PROVIDES_SZIP_SUPPORT   OFF)
 set (${HDF5_PACKAGE_NAME}_PROVIDES_SZIP_ENCODING  OFF)
 #-----------------------------------------------------------------------------
@@ -150,7 +150,7 @@ endif ()
 
 if (${HDF5_PACKAGE_NAME}_PROVIDES_ZLIB_SUPPORT AND NOT OFF)
   if (NOT OFF)
-    if (OFF)
+    if (ON)
       # Expect that the default shared library is expected with FindZLIB.cmake
       find_dependency (ZLIB MODULE)
     else ()

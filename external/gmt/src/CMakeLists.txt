@@ -141,10 +141,12 @@ include_directories (${NETCDF_INCLUDE_DIR})
 
 # libcurl is required since GMT 5.4
 # At least version 7.55.0 is needed for src/gmt_remote.c
-find_package (CURL 7.55.0 REQUIRED)
-include_directories (${CURL_INCLUDE_DIRS})
-list (APPEND GMT_OPTIONAL_LIBRARIES ${CURL_LIBRARIES})
-set (CURL_LIBRARY ${CURL_LIBRARIES} CACHE INTERNAL "")
+if (NOT GMT_NO_CURL)
+  find_package (CURL 7.55.0 REQUIRED)
+  include_directories (${CURL_INCLUDE_DIRS})
+  list (APPEND GMT_OPTIONAL_LIBRARIES ${CURL_LIBRARIES})
+  set (CURL_LIBRARY ${CURL_LIBRARIES} CACHE INTERNAL "")
+endif()
 
 find_package (GDAL REQUIRED)
 include_directories (${GDAL_INCLUDE_DIR})
