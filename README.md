@@ -2,13 +2,13 @@
 
 **Go 语言实现的 DEM (Digital Elevation Model) 生成与处理引擎**
 
-对标 [NOAA NCEI CUDEM](https://github.com/cires-dem/cudem) 的纯 Go 实现，提供完整的 DEM 生产管线：数据获取 → 数据堆栈 → 格网化插值 → 后处理滤波 → 不确定性评估 → 可视化输出。
+提供完整的 DEM 生产管线：数据获取 → 数据堆栈 → 格网化插值 → 后处理滤波 → 不确定性评估 → 可视化输出。
 
 ## 特性
 
 ### 核心技术
 
-- **KDTree 空间索引** — 所有空间搜索算法 (IDW/CUBE/CUDEM/NaturalNeighbor) 使用 KDTree 替代暴力搜索，查询复杂度从 O(n) 优化到 O(log n)
+- **KDTree 空间索引** — 所有空间搜索算法 (IDW/CUBE/StepGrid/NaturalNeighbor) 使用 KDTree 替代暴力搜索，查询复杂度从 O(n) 优化到 O(log n)
 - **NoData 安全处理** — `NoData` 使用 `*float64` 指针类型，配合 `CoalesceNoData()` 和 `IsNoDataValue()` 消除零值歧义
 
 ### 格网化引擎 (waffle/)
@@ -22,8 +22,8 @@
 | Nearest | 最近邻插值 |
 | Natural Neighbor | Laplace (non-Sibsonian) 自然邻域插值 |
 | Inpaint | Fast Marching Method (Telea 2004) 影像修复填充 |
-| CUBE | CUBE v2: TVU/THU 逐点不确定性建模 + 密度模式聚类 + 信息准则 (AIC-like) 假设选择 + 邻域假设传播 |
-| CUDEM | 多分辨率 step-down: 局部点密度分位数动态层级选择 + KDTree 空间索引 + 不确定性加权跨层级融合 |
+| CUBE | TVU/THU 逐点不确定性建模 + 密度模式聚类 + 信息准则 (AIC-like) 假设选择 + 邻域假设传播 |
+| Step Grid | 多分辨率 step-down: 局部点密度分位数动态层级选择 + KDTree 空间索引 + 不确定性加权跨层级融合 |
 
 ### 后处理引擎 (grits/)
 
@@ -113,19 +113,15 @@ import (
 )
 
 func main() {
-    // 1. 定义区域
     srs := geo.NewProj("EPSG:4326")
     region := dem.NewRegionFromBBox(-125, 40, -122, 43, srs, 0.0005, 0.0005)
 
-    // 2. 创建插值器
     w, _ := waffle.New(dem.MethodIDW)
 
-    // 3. 执行格网化
     result, _ := w.Run([]string{"input.tif"}, &waffle.Options{
         Region: region,
     })
 
-    // 4. 输出 DEM
     dem.CreateDEM(result.DEM, region, "output.tif", -9999)
 }
 ```
@@ -143,23 +139,6 @@ func main() {
 | [go-delaunay](https://github.com/flywave/go-delaunay) | Delaunay 三角剖分 |
 | [go-geom](https://github.com/flywave/go-geom) | 几何类型 |
 | [go-geos](https://github.com/flywave/go-geos) | GEOS 空间操作 |
-
-## 与原版 CUDEM 的对照
-
-| CUDEM 模块 | go-dem 模块 | 状态 |
-|-----------|-------------|------|
-| `waffles/` | `waffle/` | ✅ 9 种方法 (CUDEM 6+) |
-| `grits/` | `grits/` | ✅ 11 种滤镜 (CUDEM 12+) |
-| `regions.py` | `region.go` | ✅ |
-| `gdalfun.py` | `output.go` | ✅ |
-| `datalists/` | `datalist/` | ✅ Stack/XYZ/LAS |
-| `pointz.py` | `pointz/` | ✅ |
-| `vdatums.py` | `datum/` | ✅ |
-| `uncertainty/` | `uncertainty/` | ✅ |
-| `perspecto/` | `perspecto/` | ✅ |
-| `fetches/` | `fetch/` | ✅ 7 个数据源 |
-| `globato/` | — | ⏳ |
-| CUBE 标准实现 | — | ⏳ |
 
 ## 测试
 
