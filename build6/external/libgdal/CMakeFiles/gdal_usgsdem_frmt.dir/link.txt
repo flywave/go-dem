@@ -1,0 +1,2 @@
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_usgsdem_frmt.a CMakeFiles/gdal_usgsdem_frmt.dir/gdal/frmts/usgsdem/usgsdem_create.cpp.o CMakeFiles/gdal_usgsdem_frmt.dir/gdal/frmts/usgsdem/usgsdemdataset.cpp.o
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_usgsdem_frmt.a

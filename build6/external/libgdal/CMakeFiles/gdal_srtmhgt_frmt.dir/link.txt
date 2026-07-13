@@ -1,0 +1,2 @@
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_srtmhgt_frmt.a CMakeFiles/gdal_srtmhgt_frmt.dir/gdal/frmts/srtmhgt/srtmhgtdataset.cpp.o
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_srtmhgt_frmt.a

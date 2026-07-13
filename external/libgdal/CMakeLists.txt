@@ -112,11 +112,14 @@ add_definitions(
 ENDIF()
 
 set(gdal_SOURCE_FILES
-  gdal/apps/ogr2ogr_lib.cpp
-  gdal/apps/gdal_rasterize_lib.cpp
   gdal/apps/gdal_translate_lib.cpp
   gdal/apps/gdalwarp_lib.cpp
   gdal/apps/gdalbuildvrt_lib.cpp
+  gdal/apps/gdal_grid_lib.cpp
+  gdal/apps/gdaldem_lib.cpp
+  gdal/apps/gdalinfo_lib.cpp
+  gdal/apps/ogr2ogr_lib.cpp
+  gdal/apps/gdal_rasterize_lib.cpp
   gdal/apps/commonutils.cpp
 
   gdal/frmts/gdalallregister.cpp

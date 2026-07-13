@@ -1,0 +1,2 @@
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_ceos2_frmt.a CMakeFiles/gdal_ceos2_frmt.dir/gdal/frmts/ceos2/ceos.c.o CMakeFiles/gdal_ceos2_frmt.dir/gdal/frmts/ceos2/ceosrecipe.c.o CMakeFiles/gdal_ceos2_frmt.dir/gdal/frmts/ceos2/ceossar.c.o CMakeFiles/gdal_ceos2_frmt.dir/gdal/frmts/ceos2/link.c.o CMakeFiles/gdal_ceos2_frmt.dir/gdal/frmts/ceos2/sar_ceosdataset.cpp.o
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_ceos2_frmt.a

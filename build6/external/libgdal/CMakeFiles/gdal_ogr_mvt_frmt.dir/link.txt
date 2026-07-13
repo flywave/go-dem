@@ -1,0 +1,2 @@
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_ogr_mvt_frmt.a CMakeFiles/gdal_ogr_mvt_frmt.dir/gdal/ogr/ogrsf_frmts/mvt/mvtutils.cpp.o CMakeFiles/gdal_ogr_mvt_frmt.dir/gdal/ogr/ogrsf_frmts/mvt/ogrmvtdataset.cpp.o CMakeFiles/gdal_ogr_mvt_frmt.dir/gdal/ogr/ogrsf_frmts/mvt/mvt_tile.cpp.o
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_ogr_mvt_frmt.a

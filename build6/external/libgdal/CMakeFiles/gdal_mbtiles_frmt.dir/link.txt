@@ -1,0 +1,2 @@
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_mbtiles_frmt.a CMakeFiles/gdal_mbtiles_frmt.dir/gdal/frmts/mbtiles/mbtilesdataset.cpp.o
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_mbtiles_frmt.a

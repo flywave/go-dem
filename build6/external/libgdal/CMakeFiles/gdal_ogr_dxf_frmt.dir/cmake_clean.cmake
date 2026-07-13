@@ -1,0 +1,43 @@
+file(REMOVE_RECURSE
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/intronurbs.cpp.o"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/intronurbs.cpp.o.d"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogr_autocad_services.cpp.o"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogr_autocad_services.cpp.o.d"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxf_blockmap.cpp.o"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxf_blockmap.cpp.o.d"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxf_dimension.cpp.o"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxf_dimension.cpp.o.d"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxf_feature.cpp.o"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxf_feature.cpp.o.d"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxf_hatch.cpp.o"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxf_hatch.cpp.o.d"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxf_leader.cpp.o"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxf_leader.cpp.o.d"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxf_ocstransformer.cpp.o"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxf_ocstransformer.cpp.o.d"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxf_polyline_smooth.cpp.o"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxf_polyline_smooth.cpp.o.d"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxfblockslayer.cpp.o"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxfblockslayer.cpp.o.d"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxfblockswriterlayer.cpp.o"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxfblockswriterlayer.cpp.o.d"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxfdatasource.cpp.o"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxfdatasource.cpp.o.d"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxfdriver.cpp.o"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxfdriver.cpp.o.d"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxflayer.cpp.o"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxflayer.cpp.o.d"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxfreader.cpp.o"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxfreader.cpp.o.d"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxfwriterds.cpp.o"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxfwriterds.cpp.o.d"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxfwriterlayer.cpp.o"
+  "CMakeFiles/gdal_ogr_dxf_frmt.dir/gdal/ogr/ogrsf_frmts/dxf/ogrdxfwriterlayer.cpp.o.d"
+  "libgdal_ogr_dxf_frmt.a"
+  "libgdal_ogr_dxf_frmt.pdb"
+)
+
+# Per-language clean rules from dependency scanning.
+foreach(lang CXX)
+  include(CMakeFiles/gdal_ogr_dxf_frmt.dir/cmake_clean_${lang}.cmake OPTIONAL)
+endforeach()

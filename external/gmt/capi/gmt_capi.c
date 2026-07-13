@@ -34,11 +34,13 @@ void gdemo_gmt_end(void) {
 /* Helper: tokenize command string into argv array and call module */
 static int call_module(gmt_module_func func, const char *cmd) {
     if (gdemo_gmt_begin() != 0) return -1;
-    /* Parse command into argv array */
+    /* Parse command into argv array, prepending program name */
     char buf[2048];
     strncpy(buf, cmd, sizeof(buf)-1);
+    buf[sizeof(buf)-1] = '\0';
     char *argv[128];
     int argc = 0;
+    argv[argc++] = "gmt";  /* argv[0] = program name (ignored by module) */
     char *token = strtok(buf, " ");
     while (token && argc < 126) {
         argv[argc++] = token;

@@ -1,0 +1,2 @@
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_kmlsuperoverlay_frmt.a CMakeFiles/gdal_kmlsuperoverlay_frmt.dir/gdal/frmts/kmlsuperoverlay/kmlsuperoverlaydataset.cpp.o
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_kmlsuperoverlay_frmt.a

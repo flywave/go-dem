@@ -1,0 +1,2 @@
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_ogr_csv_frmt.a CMakeFiles/gdal_ogr_csv_frmt.dir/gdal/ogr/ogrsf_frmts/csv/ogrcsvdatasource.cpp.o CMakeFiles/gdal_ogr_csv_frmt.dir/gdal/ogr/ogrsf_frmts/csv/ogrcsvdriver.cpp.o CMakeFiles/gdal_ogr_csv_frmt.dir/gdal/ogr/ogrsf_frmts/csv/ogrcsvlayer.cpp.o
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_ogr_csv_frmt.a
