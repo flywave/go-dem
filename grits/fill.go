@@ -52,27 +52,27 @@ func hasRemainingNoData(data []float64, noData float64) bool {
 func gdalFillNoData(data []float64, region *dem.Region, maxDist float64, noData float64) ([]float64, error) {
 	tmpDir, err := os.MkdirTemp("", "gdal_fill_*")
 	if err != nil {
-		return data, nil
+		return data, fmt.Errorf("fill temp dir: %v", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
 	inputPath := filepath.Join(tmpDir, "input.tif")
 	if err := dem.CreateDEM(data, region, inputPath, noData); err != nil {
-		return data, fmt.Errorf("fill temp: %v", err)
+		return data, fmt.Errorf("fill temp dem: %v", err)
 	}
 
 	err = gdal.WithDatasetUpdate(inputPath, func(ds gdal.Dataset) error {
 		band := ds.RasterBand(1)
-		var maskBand gdal.RasterBand
+		maskBand := ds.RasterBand(1)
 		return band.FillNodata(maskBand, maxDist, 0)
 	})
 	if err != nil {
-		return data, nil
+		return data, fmt.Errorf("gdal fillnodata: %v", err)
 	}
 
 	outputData, _, err := dem.ReadDEM(inputPath)
 	if err != nil {
-		return data, nil
+		return data, fmt.Errorf("fill read back: %v", err)
 	}
 
 	return outputData, nil

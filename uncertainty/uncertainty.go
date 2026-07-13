@@ -310,16 +310,20 @@ func fillUncertaintyGaps(data []float64, w, h int, noData float64) []float64 {
 }
 
 func WriteUncertainty(unc *Result, region *dem.Region, demPath string, noData float64) error {
-	if err := dem.CreateDEM(unc.TotalUncertainty, region, demPath+"_tv u.tif", noData); err != nil {
+	base := demPath
+	if len(demPath) > 4 && demPath[len(demPath)-4:] == ".tif" {
+		base = demPath[:len(demPath)-4]
+	}
+	if err := dem.CreateDEM(unc.TotalUncertainty, region, base+"_tvu.tif", noData); err != nil {
 		return fmt.Errorf("total uncertainty: %v", err)
 	}
-	if err := dem.CreateDEM(unc.InterpolationUncertainty, region, demPath+"_interp_u.tif", noData); err != nil {
+	if err := dem.CreateDEM(unc.InterpolationUncertainty, region, base+"_interp_u.tif", noData); err != nil {
 		return fmt.Errorf("interpolation uncertainty: %v", err)
 	}
-	if err := dem.CreateDEM(unc.SourceUncertainty, region, demPath+"_src_u.tif", noData); err != nil {
+	if err := dem.CreateDEM(unc.SourceUncertainty, region, base+"_src_u.tif", noData); err != nil {
 		return fmt.Errorf("source uncertainty: %v", err)
 	}
-	if err := dem.CreateDEM(unc.Proximity, region, demPath+"_prox.tif", noData); err != nil {
+	if err := dem.CreateDEM(unc.Proximity, region, base+"_prox.tif", noData); err != nil {
 		return fmt.Errorf("proximity: %v", err)
 	}
 	return nil

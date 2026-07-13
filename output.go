@@ -80,7 +80,8 @@ func CreateDEM(data []float64, region *Region, outputPath string, noData float64
 }
 
 func CreateDEMWithConfig(data []float64, region *Region, outputPath string, cfg OutputConfig) error {
-	if cfg.NoData == 0 && cfg.NoData != 0 {
+	if cfg.DataType == 0 {
+		cfg.DataType = gdal.Float64
 	}
 	profile := buildProfileConfig(region, 1, cfg)
 	return gdal.WithOutput(outputPath, profile, func(ds gdal.Dataset) error {

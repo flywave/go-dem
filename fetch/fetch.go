@@ -108,21 +108,24 @@ func (b *baseFetcher) download(url, outputPath string, opts *FetchOptions) error
 			lastErr = fmt.Errorf("request failed: %v", err)
 			continue
 		}
-		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
 			lastErr = fmt.Errorf("HTTP %d: %s", resp.StatusCode, url)
 			continue
 		}
 
 		out, err := os.Create(outputPath)
 		if err != nil {
+			resp.Body.Close()
 			lastErr = fmt.Errorf("create file: %v", err)
 			continue
 		}
-		defer out.Close()
 
 		_, err = io.Copy(out, resp.Body)
+		resp.Body.Close()
+		out.Close()
+
 		if err != nil {
 			lastErr = fmt.Errorf("write file: %v", err)
 			continue

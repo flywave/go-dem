@@ -141,16 +141,38 @@ func (s *Stack) Write(outputPath string) error {
 }
 
 func ReadStack(path string) (*Stack, error) {
-	data, region, err := dem.ReadDEM(path)
+	size := 1
+	region := &dem.Region{XSize: 0, YSize: 0}
+	data, reg, err := dem.ReadDEM(path)
 	if err != nil {
 		return nil, err
 	}
+	region = reg
+	size = region.XSize * region.YSize
 
 	stack := &Stack{
-		Elevation: data,
-		Region:    region,
-		NoData:    dem.DefaultNoData,
+		Elevation:   data,
+		Count:       make([]float64, size),
+		Weight:      make([]float64, size),
+		Uncertainty: make([]float64, size),
+		SourceID:    make([]float64, size),
+		Region:      region,
+		NoData:      dem.DefaultNoData,
 	}
+
+	if band2, _, err := dem.ReadDEMBand(path, 2); err == nil {
+		stack.Count = band2
+	}
+	if band3, _, err := dem.ReadDEMBand(path, 3); err == nil {
+		stack.Weight = band3
+	}
+	if band4, _, err := dem.ReadDEMBand(path, 4); err == nil {
+		stack.Uncertainty = band4
+	}
+	if band5, _, err := dem.ReadDEMBand(path, 5); err == nil {
+		stack.SourceID = band5
+	}
+
 	return stack, nil
 }
 

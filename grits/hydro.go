@@ -72,7 +72,7 @@ func fillSinks(data []float64, w, h int, noData float64) []float64 {
 							slope := (z - nval) / dist
 							if slope > minSlope {
 								minSlope = slope
-								flowTo = idx
+								flowTo = nidx
 							}
 						}
 					}
