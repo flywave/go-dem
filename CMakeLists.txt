@@ -71,12 +71,15 @@ SET(GDAL_INCLUDE_DIR
   "${CMAKE_CURRENT_SOURCE_DIR}/external/libgdal/gdal/port"
   "${CMAKE_CURRENT_SOURCE_DIR}/external/libgdal/gdal/alg"
   "${CMAKE_CURRENT_SOURCE_DIR}/external/libgdal/gdal/ogr"
+  "${CMAKE_CURRENT_SOURCE_DIR}/external/libgdal/gdal/apps"
   "${GDAL_ARCH_DIR}"
   "${CMAKE_CURRENT_SOURCE_DIR}/../../flywave-gdal/libs"
 )
 SET(GDAL_LIBRARY "${INSTALL_DIR}/libgdal_c.a")
 SET(PROJ_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/libproj/proj/src")
 SET(PROJ_LIBRARY "${INSTALL_DIR}/libproj.a")
+# Pre-populate GMT_OPTIONAL_LIBRARIES with PROJ (transitive dep of GDAL static lib)
+SET(GMT_OPTIONAL_LIBRARIES "${PROJ_LIBRARY};${INSTALL_DIR}/libsqlite3.a")
 SET(HDF5_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/hdf5/src")
 SET(HDF5_LIBRARY "hdf5")
 SET(HDF5_HL_LIBRARY "hdf5_hl")
@@ -118,4 +121,25 @@ SET(GMT_EXCLUDE_PCRE2 ON CACHE BOOL "" FORCE)
 SET(GMT_EXCLUDE_FFTW3 ON CACHE BOOL "" FORCE)
 ADD_DEFINITIONS(-DGMT_NO_CURL)
 SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DGMT_NO_CURL")
+# Build GMT as static library to avoid transitive-dep resolution issues
+SET(_saved_BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS}")
+SET(BUILD_SHARED_LIBS OFF)
+# Provide all GDAL transitive deps for GMT (needed for linking static libgdal_c.a)
+# Collect all GDAL format libraries
+FILE(GLOB GDAL_FMT_LIBS "${INSTALL_DIR}/libgdal_*.a")
+SET(GMT_OPTIONAL_LIBRARIES
+  "${INSTALL_DIR}/libproj.a"
+  "${INSTALL_DIR}/libsqlite3.a"
+  "${INSTALL_DIR}/libgeos.a"
+  "${INSTALL_DIR}/libiconv.a"
+  "${INSTALL_DIR}/libexpat.a"
+  "${INSTALL_DIR}/libzlib.a"
+  "${INSTALL_DIR}/libpng.a"
+  "${INSTALL_DIR}/libjpeg.a"
+  "${INSTALL_DIR}/libwebp.a"
+  ${GDAL_FMT_LIBS}
+  "-lc++"
+  "-lm"
+)
 ADD_SUBDIRECTORY("external/gmt")
+SET(BUILD_SHARED_LIBS "${_saved_BUILD_SHARED_LIBS}")
