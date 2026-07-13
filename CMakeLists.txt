@@ -54,6 +54,11 @@ ADD_SUBDIRECTORY("${CMAKE_CURRENT_SOURCE_DIR}/external/libgdal")
 ADD_SUBDIRECTORY("${CMAKE_CURRENT_SOURCE_DIR}/external/HTDP")
 
 #===============================================================================
+# GMT (C)
+#===============================================================================
+ADD_SUBDIRECTORY("${CMAKE_CURRENT_SOURCE_DIR}/external/gmt")
+
+#===============================================================================
 # Install .a files to libs/{platform}/
 #===============================================================================
 # GDAL libraries
@@ -81,6 +86,12 @@ ENDFOREACH()
 
 # HTDP
 INSTALL(FILES "${CMAKE_CURRENT_BINARY_DIR}/external/HTDP/libhtdp.a"
+  DESTINATION "${INSTALL_DIR}")
+
+# GMT
+INSTALL(FILES "${CMAKE_CURRENT_BINARY_DIR}/external/gmt/src/libgmt.a"
+  DESTINATION "${INSTALL_DIR}")
+INSTALL(FILES "${CMAKE_CURRENT_BINARY_DIR}/external/gmt/src/libpostscriptlight.a"
   DESTINATION "${INSTALL_DIR}")
 INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/external/HTDP/capi/"
   DESTINATION "${FLYWAVE_BASE_INSTALL_DIR}"

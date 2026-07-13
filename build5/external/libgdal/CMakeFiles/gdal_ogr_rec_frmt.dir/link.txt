@@ -1,0 +1,2 @@
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_ogr_rec_frmt.a CMakeFiles/gdal_ogr_rec_frmt.dir/gdal/ogr/ogrsf_frmts/rec/ll_recio.cpp.o CMakeFiles/gdal_ogr_rec_frmt.dir/gdal/ogr/ogrsf_frmts/rec/ogrrecdatasource.cpp.o CMakeFiles/gdal_ogr_rec_frmt.dir/gdal/ogr/ogrsf_frmts/rec/ogrrecdriver.cpp.o CMakeFiles/gdal_ogr_rec_frmt.dir/gdal/ogr/ogrsf_frmts/rec/ogrreclayer.cpp.o
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_ogr_rec_frmt.a

@@ -1,0 +1,2 @@
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_l1b_frmt.a CMakeFiles/gdal_l1b_frmt.dir/gdal/frmts/l1b/l1bdataset.cpp.o
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_l1b_frmt.a

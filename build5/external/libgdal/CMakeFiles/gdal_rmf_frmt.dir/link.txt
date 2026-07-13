@@ -1,0 +1,2 @@
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_rmf_frmt.a CMakeFiles/gdal_rmf_frmt.dir/gdal/frmts/rmf/rmfdataset.cpp.o CMakeFiles/gdal_rmf_frmt.dir/gdal/frmts/rmf/rmfdem.cpp.o CMakeFiles/gdal_rmf_frmt.dir/gdal/frmts/rmf/rmfjpeg.cpp.o CMakeFiles/gdal_rmf_frmt.dir/gdal/frmts/rmf/rmflzw.cpp.o
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_rmf_frmt.a

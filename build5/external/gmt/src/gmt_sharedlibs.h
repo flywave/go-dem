@@ -1,0 +1,60 @@
+/*--------------------------------------------------------------------
+ *
+ *  Copyright (c) 1991-2026 by the GMT Team (https://www.generic-mapping-tools.org/team.html)
+ *  See LICENSE.TXT file for copying and redistribution conditions.
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU Lesser General Public License as published by
+ *  the Free Software Foundation; version 3 or any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU Lesser General Public License for more details.
+ *
+ *  Contact info: www.generic-mapping-tools.org
+ *--------------------------------------------------------------------*/
+
+/*!
+ * \file gmt_sharedlibs.h
+ * \brief Structures needed by the various shared libraries.
+ */
+
+#pragma once
+#ifndef GMT_SHAREDLIBS_H
+#define GMT_SHAREDLIBS_H
+
+#ifdef __cplusplus /* Basic C++ support */
+extern "C" {
+#endif
+
+#define GMT_SUPPL_LIB_NAME "supplements"
+
+#ifdef _WIN32
+#include <windows.h>
+
+/* Various functions declared in gmt_sharedlibs.c */
+EXTERN_MSC void *dlopen (const char *module_name, int mode);
+EXTERN_MSC int dlclose (void *handle);
+EXTERN_MSC void *dlsym (void *handle, const char *name);
+EXTERN_MSC char *dlerror (void);
+#else
+#include <dlfcn.h>
+#endif
+
+EXTERN_MSC void *dlopen_special (const char *name);
+
+/*! Info for each GMT shared library. This array is filled out when parsing GMT_CUSTOM_LIBS at end of GMT_Create_Session */
+
+struct GMT_LIBINFO {
+	char *name;	/* Library tag name [without leading "lib" and extension], e.g. "gmt", "supplements" */
+	char *path;	/* Full path to library as given in GMT_CUSTOM_LIBS */
+	bool skip;	/* true if we tried to open it and it was not available the first time */
+	void *handle;	/* Handle to the shared library, returned by dlopen or dlopen_special */
+};
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* !GMT_SHAREDLIBS_H */

@@ -1,0 +1,2 @@
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_xyz_frmt.a CMakeFiles/gdal_xyz_frmt.dir/gdal/frmts/xyz/xyzdataset.cpp.o
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_xyz_frmt.a

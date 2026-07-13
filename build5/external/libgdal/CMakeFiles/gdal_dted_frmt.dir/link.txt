@@ -1,0 +1,2 @@
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_dted_frmt.a CMakeFiles/gdal_dted_frmt.dir/gdal/frmts/dted/dted_api.c.o CMakeFiles/gdal_dted_frmt.dir/gdal/frmts/dted/dted_create.c.o CMakeFiles/gdal_dted_frmt.dir/gdal/frmts/dted/dted_ptstream.c.o CMakeFiles/gdal_dted_frmt.dir/gdal/frmts/dted/dteddataset.cpp.o
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_dted_frmt.a

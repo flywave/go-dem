@@ -1,0 +1,2 @@
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_aaigrid_frmt.a CMakeFiles/gdal_aaigrid_frmt.dir/gdal/frmts/aaigrid/aaigriddataset.cpp.o
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_aaigrid_frmt.a
