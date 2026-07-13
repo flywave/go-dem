@@ -1,41 +1,51 @@
 #!/bin/bash
-# Build external dependencies for go-dem
-# HDF5 → netCDF → GMT
+# Build all external dependencies for go-dem
+# GDAL + PROJ + GEOS + ZLIB + PNG + JPEG + EXPAT + SQLite3 + WEBP + ICONV + HDF5 + netCDF + GMT
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEM_DIR="$(dirname "$SCRIPT_DIR")"
-PLATFORM="darwin_arm"  # change for other platforms: darwin, linux, linux_arm
+cd "$DEM_DIR"
 
 case "$(uname -s)" in
     Darwin)
-        if [ "$(uname -m)" = "arm64" ]; then
-            PLATFORM="darwin_arm"
-        else
-            PLATFORM="darwin"
-        fi
+        [ "$(uname -m)" = "arm64" ] && PLATFORM="darwin_arm" || PLATFORM="darwin"
         ;;
     Linux)
-        if [ "$(uname -m)" = "aarch64" ]; then
-            PLATFORM="linux_arm"
-        else
-            PLATFORM="linux"
-        fi
+        [ "$(uname -m)" = "aarch64" ] && PLATFORM="linux_arm" || PLATFORM="linux"
         ;;
 esac
 
 INSTALL_DIR="$DEM_DIR/libs/$PLATFORM"
-FLYWAVE_GDAL_DIR="$DEM_DIR/../../flywave-gdal"
-FLYWAVE_LIB="$FLYWAVE_GDAL_DIR/libs/$PLATFORM"
 JOBS=$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
-
-echo "Building for $PLATFORM (install: $INSTALL_DIR, jobs: $JOBS)"
+echo "Platform: $PLATFORM  Install: $INSTALL_DIR  Jobs: $JOBS"
 
 #===============================================================================
-# 1. HDF5
+# Phase 1: GDAL ecosystem (uses flywave-gdal's CMake externally)
 #===============================================================================
-echo "=== Building HDF5 ==="
-cd "$DEM_DIR/external/hdf5"
+echo "=== Phase 1: Building GDAL + dependencies ==="
+mkdir -p build && cd build
+cmake .. \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
+    -DBUILD_SHARED_LIBS=OFF
+cmake --build . -j$JOBS
+cd "$DEM_DIR"
+
+# Collect .a files
+echo "=== Installing GDAL ecosystem libraries ==="
+mkdir -p "$INSTALL_DIR/lib" "$INSTALL_DIR/include"
+find build -name "*.a" -exec cp {} "$INSTALL_DIR/lib/" \; 2>/dev/null
+# Copy headers
+for dir in external/libgdal/gdal/port external/libgdal/gdal/gcore external/libgdal/gdal/alg external/libgdal/gdal/ogr; do
+    [ -d "$dir" ] && cp "$dir"/*.h "$INSTALL_DIR/include/" 2>/dev/null || true
+done
+
+#===============================================================================
+# Phase 2: HDF5
+#===============================================================================
+echo "=== Phase 2: Building HDF5 ==="
+cd external/hdf5
 mkdir -p build && cd build
 cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
@@ -49,42 +59,38 @@ cmake .. \
     -DHDF5_BUILD_JAVA=OFF \
     -DHDF5_BUILD_HL_LIB=OFF \
     -DHDF5_ENABLE_ZLIB_SUPPORT=OFF \
-    -DHDF5_ENABLE_SZIP_SUPPORT=OFF \
     -DHDF5_ENABLE_PARALLEL=OFF \
-    -DHDF5_ENABLE_THREADSAFE=OFF \
     -DHDF5_ALLOW_EXTERNAL_SUPPORT=NO
 cmake --build . --target install -j$JOBS
 cd "$DEM_DIR"
 
 #===============================================================================
-# 2. netCDF
+# Phase 3: netCDF
 #===============================================================================
-echo "=== Building netCDF ==="
-cd "$DEM_DIR/external/netcdf"
+echo "=== Phase 3: Building netCDF ==="
+cd external/netcdf
 mkdir -p build && cd build
 cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
     -DBUILD_SHARED_LIBS=OFF \
     -DBUILD_TESTING=OFF \
-    -DENABLE_TESTS=OFF \
     -DENABLE_DAP=OFF \
     -DENABLE_BYTERANGE=OFF \
     -DNETCDF_ENABLE_HDF5=ON \
     -DNETCDF_ENABLE_NCZARR=OFF \
     -DNETCDF_ENABLE_FILTER_SZIP=OFF \
     -DNETCDF_ENABLE_PARALLEL4=OFF \
-    -DNETCDF_ENABLE_EXAMPLE_TESTS=OFF \
     -DHDF5_ROOT="$INSTALL_DIR" \
     -DHDF5_USE_STATIC_LIBRARIES=ON
 cmake --build . --target install -j$JOBS
 cd "$DEM_DIR"
 
 #===============================================================================
-# 3. GMT
+# Phase 4: GMT
 #===============================================================================
-echo "=== Building GMT ==="
-cd "$DEM_DIR/external/gmt"
+echo "=== Phase 4: Building GMT ==="
+cd external/gmt
 mkdir -p build && cd build
 cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
@@ -95,15 +101,16 @@ cmake .. \
     -DNETCDF_LIBRARY="$INSTALL_DIR/lib/libnetcdf.a" \
     -DHDF5_INCLUDE_DIR="$INSTALL_DIR/include" \
     -DHDF5_LIBRARY="$INSTALL_DIR/lib/libhdf5.a" \
-    -DGDAL_INCLUDE_DIR="$FLYWAVE_GDAL_DIR/external/libgdal/include" \
-    -DGDAL_LIBRARY="$FLYWAVE_LIB/libgdal_c.a" \
-    -DPROJ_INCLUDE_DIR="$FLYWAVE_GDAL_DIR/external/libproj/include" \
-    -DPROJ_LIBRARY="$FLYWAVE_LIB/libproj.a" \
-    -DGEOS_INCLUDE_DIR="$DEM_DIR/../../go-geos/libs" \
-    -DGEOS_LIBRARY="$DEM_DIR/../../go-geos/libs/$PLATFORM/libgeos.a" \
-    -DPCRE_ROOT="/opt/homebrew" \
-    -DZLIB_LIBRARY="$FLYWAVE_LIB/libzlib.a" \
-    -DZLIB_INCLUDE_DIR="$FLYWAVE_GDAL_DIR/external/zlib" \
+    -DGDAL_INCLUDE_DIR="$INSTALL_DIR/include" \
+    -DGDAL_LIBRARY="$INSTALL_DIR/lib/libgdal_c.a" \
+    -DPROJ_INCLUDE_DIR="$INSTALL_DIR/include" \
+    -DPROJ_LIBRARY="$INSTALL_DIR/lib/libproj.a" \
+    -DGEOS_INCLUDE_DIR="$INSTALL_DIR/include" \
+    -DGEOS_LIBRARY="$INSTALL_DIR/lib/libgeos.a" \
+    -DSQLITE3_INCLUDE_DIR="$INSTALL_DIR/include" \
+    -DSQLITE3_LIBRARY="$INSTALL_DIR/lib/libsqlite3.a" \
+    -DZLIB_LIBRARY="$INSTALL_DIR/lib/libzlib.a" \
+    -DZLIB_INCLUDE_DIR="$INSTALL_DIR/include" \
     -DCURL_LIBRARY="" \
     -DCURL_INCLUDE_DIR="" \
     -DGMT_NO_CURL=ON
@@ -112,4 +119,4 @@ cd "$DEM_DIR"
 
 echo "=== Done ==="
 echo "Libraries installed to: $INSTALL_DIR"
-ls -la "$INSTALL_DIR/lib/" | grep -E "hdf5|netcdf|gmt"
+ls -la "$INSTALL_DIR/lib/" | grep -E "\.a"
