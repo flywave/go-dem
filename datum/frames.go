@@ -1,9 +1,12 @@
 package datum
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
+
+var errHTDPFailed = errors.New("htdp transform failed")
 
 type FrameType int
 

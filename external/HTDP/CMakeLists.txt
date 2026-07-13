@@ -21,8 +21,21 @@ set(HTDP_CSRC
 )
 
 # Build as static library
+set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -fPIC -O2 -ffixed-line-length-132")
+
+# Generate a version of htdp.f without PROGRAM main to avoid duplicate _main
+set(HTDP_LIB_F ${CMAKE_CURRENT_BINARY_DIR}/htdp_lib.f)
+file(READ ${HTDP_SRC_DIR}/htdp.f HTDP_SRC_CONTENT)
+string(REGEX REPLACE "PROGRAM[ ]+HTDP" "SUBROUTINE HTDPMAIN" HTDP_LIB_CONTENT "${HTDP_SRC_CONTENT}")
+file(WRITE ${HTDP_LIB_F} "${HTDP_LIB_CONTENT}")
+message(STATUS "Generated htdp_lib.f (PROGRAM → SUBROUTINE)")
+
 add_library(htdp STATIC
-    ${HTDP_FSRC}
+    ${HTDP_LIB_F}
+    ${HTDP_SRC_DIR}/initvl.f
+    ${HTDP_SRC_DIR}/initeq.f
+    ${HTDP_SRC_DIR}/initbd.f
+    ${HTDP_SRC_DIR}/initps.f
     ${HTDP_CSRC}
 )
 
