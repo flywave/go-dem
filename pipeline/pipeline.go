@@ -10,10 +10,10 @@ import (
 )
 
 type Config struct {
-	SourceEpsg   int
-	TargetEpsg   int
+	SourceEpsg    int
+	TargetEpsg    int
 	VerticalDatum geoid.VerticalDatum
-	NoData       float64
+	NoData        float64
 }
 
 func RunDEM(points []waffle.Point, region *dem.Region, method dem.InterpMethod, opts *waffle.Options, outPath string, cfg Config) error {

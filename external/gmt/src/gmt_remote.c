@@ -54,6 +54,8 @@
 #include "gmt_internals.h"
 #ifndef GMT_NO_CURL
 #include <curl/curl.h>
+#else
+#include <stdbool.h>
 #endif
 #ifdef WIN32
 #include <sys/utime.h>
@@ -1992,50 +1994,75 @@ char *gmt_dataserver_url (struct GMTAPI_CTRL *API) {
 	return (link);
 }
 
-#else  /* GMT_NO_CURL — stub implementations that return error/unavailable */
+#else  /* GMT_NO_CURL — stub implementations */
 
-GMT_LOCAL char *gmtremote_resolve_redirect (struct GMTAPI_CTRL *API, const char *url) {
-	gmt_M_unused (API); gmt_M_unused (url);
-	return NULL;
+#include "gmt_prototypes.h"
+
+char *gmtremote_resolve_redirect (struct GMTAPI_CTRL *API, const char *url) {
+	gmt_M_unused (API); gmt_M_unused (url); return NULL;
 }
-
-struct LOCFILE_FP *gmtremote_lock_on (struct GMT_CTRL *GMT, char *file) {
-	gmt_M_unused (GMT); gmt_M_unused (file);
-	return NULL;
-}
-
-void gmtremote_lock_off (struct GMT_CTRL *GMT, struct LOCFILE_FP **P) {
-	gmt_M_unused (GMT); gmt_M_unused (P);
-}
-
-int gmt_download_file (struct GMT_CTRL *GMT, const char *name, char *url, char *localfile, bool be_fussy) {
-	gmt_M_unused (GMT); gmt_M_unused (name); gmt_M_unused (url);
-	gmt_M_unused (localfile); gmt_M_unused (be_fussy);
-	GMT_Report (GMT->parent, GMT_MSG_ERROR, "Remote file access disabled (GMT compiled with GMT_NO_CURL)\n");
-	return GMT_RUNTIME_ERROR;
-}
-
-int gmt_download_file_if_not_found (struct GMTAPI_CTRL *API, const char *name, const char *url, char *localfile, bool be_fussy) {
-	gmt_M_unused (API); gmt_M_unused (name); gmt_M_unused (url);
-	gmt_M_unused (localfile); gmt_M_unused (be_fussy);
-	GMT_Report (API, GMT_MSG_ERROR, "Remote file access disabled (GMT compiled with GMT_NO_CURL)\n");
-	return GMT_RUNTIME_ERROR;
-}
-
-int gmt_download_tiles (struct GMTAPI_CTRL *API, char *file, char *url, unsigned int n_tiles) {
-	gmt_M_unused (API); gmt_M_unused (file); gmt_M_unused (url); gmt_M_unused (n_tiles);
-	GMT_Report (API, GMT_MSG_ERROR, "Remote tile access disabled (GMT compiled with GMT_NO_CURL)\n");
-	return GMT_RUNTIME_ERROR;
-}
-
-int gmt_refresh_server (struct GMTAPI_CTRL *API, unsigned int index) {
-	gmt_M_unused (API); gmt_M_unused (index);
-	GMT_Report (API, GMT_MSG_ERROR, "Remote server refresh disabled (GMT compiled with GMT_NO_CURL)\n");
-	return GMT_RUNTIME_ERROR;
-}
-
 void gmtremote_display_attribution (struct GMTAPI_CTRL *API, int key, const char *file, int tile) {
 	gmt_M_unused (API); gmt_M_unused (key); gmt_M_unused (file); gmt_M_unused (tile);
+}
+int gmt_download_file (struct GMT_CTRL *GMT, const char *name, char *url, char *localfile, bool be_fussy) {
+	gmt_M_unused (GMT); gmt_M_unused (name); gmt_M_unused (url); gmt_M_unused (localfile); gmt_M_unused (be_fussy);
+	return GMT_RUNTIME_ERROR;
+}
+unsigned int gmt_download_file_if_not_found (struct GMT_CTRL *GMT, const char *file, unsigned int mode) {
+	gmt_M_unused (GMT); gmt_M_unused (file); gmt_M_unused (mode); return GMT_RUNTIME_ERROR;
+}
+int gmt_download_tiles (struct GMTAPI_CTRL *API, char *list, unsigned int mode) {
+	gmt_M_unused (API); gmt_M_unused (list); gmt_M_unused (mode); return GMT_RUNTIME_ERROR;
+}
+void gmt_refresh_server (struct GMTAPI_CTRL *API) { gmt_M_unused (API); }
+
+bool gmt_file_is_cache (struct GMTAPI_CTRL *API, const char *file) {
+	gmt_M_unused (API); gmt_M_unused (file); return false;
+}
+int gmt_file_is_a_tile (struct GMTAPI_CTRL *API, const char *infile, unsigned int where) {
+	gmt_M_unused (API); gmt_M_unused (infile); gmt_M_unused (where); return -1;
+}
+bool gmt_file_is_tiled_list (struct GMTAPI_CTRL *API, const char *file, int *ID, char *wetdry, char *region_type) {
+	gmt_M_unused (API); gmt_M_unused (file); gmt_M_unused (ID); gmt_M_unused (wetdry); gmt_M_unused (region_type);
+	return false;
+}
+int gmt_get_tile_id (struct GMTAPI_CTRL *API, char *file) {
+	gmt_M_unused (API); gmt_M_unused (file); return -1;
+}
+int gmt_remote_dataset_id (struct GMTAPI_CTRL *API, const char *ifile) {
+	gmt_M_unused (API); gmt_M_unused (ifile); return -1;
+}
+int gmt_remote_no_extension (struct GMTAPI_CTRL *API, const char *file) {
+	gmt_M_unused (API); gmt_M_unused (file); return 1;
+}
+int gmt_remote_no_resolution_given (struct GMTAPI_CTRL *API, const char *rfile, int *registration) {
+	gmt_M_unused (API); gmt_M_unused (rfile); gmt_M_unused (registration); return 1;
+}
+struct GMT_RESOLUTION *gmt_remote_resolutions (struct GMTAPI_CTRL *API, const char *rfile, unsigned int *n) {
+	gmt_M_unused (API); gmt_M_unused (rfile); if (n) *n = 0; return NULL;
+}
+int gmt_set_remote_and_local_filenames (struct GMT_CTRL *GMT, const char * file, char *local_path, char *remote_path, unsigned int mode) {
+	gmt_M_unused (GMT); gmt_M_unused (file); gmt_M_unused (local_path); gmt_M_unused (remote_path); gmt_M_unused (mode);
+	return GMT_RUNTIME_ERROR;
+}
+int gmt_set_unspecified_remote_registration (struct GMTAPI_CTRL *API, char **file_ptr) {
+	gmt_M_unused (API); gmt_M_unused (file_ptr); return GMT_RUNTIME_ERROR;
+}
+char *gmt_dataserver_url (struct GMTAPI_CTRL *API) {
+	gmt_M_unused (API); return NULL;
+}
+struct GMT_GRID *gmtlib_assemble_tiles (struct GMTAPI_CTRL *API, double *region, char *file) {
+	gmt_M_unused (API); gmt_M_unused (region); gmt_M_unused (file); return NULL;
+}
+int gmtlib_file_is_jpeg2000_tile (struct GMTAPI_CTRL *API, char *file) {
+	gmt_M_unused (API); gmt_M_unused (file); return -1;
+}
+char *gmtlib_get_tile_list (struct GMTAPI_CTRL *API, double wesn[], int k_data, bool plot_region, unsigned int srtm_flag) {
+	gmt_M_unused (API); gmt_M_unused (wesn); gmt_M_unused (k_data); gmt_M_unused (plot_region); gmt_M_unused (srtm_flag);
+	return NULL;
+}
+int gmtlib_remote_file_is_tiled (struct GMTAPI_CTRL *API, const char *file, unsigned int *mode) {
+	gmt_M_unused (API); gmt_M_unused (file); gmt_M_unused (mode); return -1;
 }
 
 #endif  /* GMT_NO_CURL */
