@@ -19,15 +19,19 @@ func TestSurfaceSmall(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	xyzPath := filepath.Join(dir, "test.xyz")
-	grdPath := filepath.Join(dir, "test.grd")
+	grdPath := filepath.Join(dir, "test.tif")
 
-	// Create a small XYZ file with known data
+	// Create XYZ data for a 3x3 area at 1.0 spacing → 4x4 grid nodes
 	xyz := []string{
 		"0.0 0.0 100.0\n",
-		"1.0 0.0 200.0\n",
-		"0.0 1.0 300.0\n",
-		"1.0 1.0 400.0\n",
-		"0.5 0.5 250.0\n",
+		"3.0 0.0 200.0\n",
+		"0.0 3.0 300.0\n",
+		"3.0 3.0 400.0\n",
+		"1.5 1.5 250.0\n",
+		"1.5 0.0 150.0\n",
+		"0.0 1.5 200.0\n",
+		"3.0 1.5 350.0\n",
+		"1.5 3.0 300.0\n",
 	}
 	f, err := os.Create(xyzPath)
 	if err != nil {
@@ -39,9 +43,9 @@ func TestSurfaceSmall(t *testing.T) {
 	f.Close()
 
 	cfg := &GridConfig{
-		XInc: 0.5, YInc: 0.5,
-		XMin: 0, XMax: 1,
-		YMin: 0, YMax: 1,
+		XInc: 1.0, YInc: 1.0,
+		XMin: 0, XMax: 3,
+		YMin: 0, YMax: 3,
 		Tension: 0.25,
 	}
 
@@ -192,15 +196,19 @@ func TestGrdfilterSmall(t *testing.T) {
 
 	// First create a surface to filter
 	xyzPath := filepath.Join(dir, "test.xyz")
-	grdPath := filepath.Join(dir, "input.grd")
-	filtPath := filepath.Join(dir, "filtered.grd")
+	grdPath := filepath.Join(dir, "input.tif")
+	filtPath := filepath.Join(dir, "filtered.tif")
 
 	xyz := []string{
 		"0.0 0.0 100.0\n",
-		"1.0 0.0 200.0\n",
-		"0.0 1.0 300.0\n",
-		"1.0 1.0 400.0\n",
-		"0.5 0.5 250.0\n",
+		"3.0 0.0 200.0\n",
+		"0.0 3.0 300.0\n",
+		"3.0 3.0 400.0\n",
+		"1.5 1.5 250.0\n",
+		"1.5 0.0 150.0\n",
+		"0.0 1.5 200.0\n",
+		"3.0 1.5 350.0\n",
+		"1.5 3.0 300.0\n",
 	}
 	f, _ := os.Create(xyzPath)
 	for _, line := range xyz {
@@ -209,9 +217,9 @@ func TestGrdfilterSmall(t *testing.T) {
 	f.Close()
 
 	cfg := &GridConfig{
-		XInc: 0.5, YInc: 0.5,
-		XMin: 0, XMax: 1,
-		YMin: 0, YMax: 1,
+		XInc: 1.0, YInc: 1.0,
+		XMin: 0, XMax: 3,
+		YMin: 0, YMax: 3,
 		Tension: 0.25,
 	}
 
