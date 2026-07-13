@@ -2011,7 +2011,11 @@ int gmt_download_file (struct GMT_CTRL *GMT, const char *name, char *url, char *
 	return GMT_RUNTIME_ERROR;
 }
 unsigned int gmt_download_file_if_not_found (struct GMT_CTRL *GMT, const char *file, unsigned int mode) {
-	gmt_M_unused (GMT); gmt_M_unused (file); gmt_M_unused (mode); return GMT_RUNTIME_ERROR;
+	gmt_M_unused (GMT); gmt_M_unused (mode);
+	/* Return 0 for absolute paths (local file, no download needed).
+	   The caller uses the return value as an offset into the filename. */
+	if (file && file[0] == '/') return 0;
+	return GMT_RUNTIME_ERROR;
 }
 int gmt_download_tiles (struct GMTAPI_CTRL *API, char *list, unsigned int mode) {
 	gmt_M_unused (API); gmt_M_unused (list); gmt_M_unused (mode); return GMT_RUNTIME_ERROR;

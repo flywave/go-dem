@@ -122,8 +122,7 @@ SET(GMT_EXCLUDE_FFTW3 ON CACHE BOOL "" FORCE)
 ADD_DEFINITIONS(-DGMT_NO_CURL)
 SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DGMT_NO_CURL")
 # Build GMT as static library to avoid transitive-dep resolution issues
-SET(_saved_BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS}")
-SET(BUILD_SHARED_LIBS OFF)
+SET(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 # Provide all GDAL transitive deps for GMT (needed for linking static libgdal_c.a)
 # Collect all GDAL format libraries
 FILE(GLOB GDAL_FMT_LIBS "${INSTALL_DIR}/libgdal_*.a")

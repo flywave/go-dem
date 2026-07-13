@@ -20,6 +20,10 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/ConfigDefault.cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules/ConfigCMake.cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules/ConfigureChecks.cmake")
 
+# Manually set GMT config variables that the full cmake would provide
+set(GMT_CORE_LIB_NAME "libgmt" CACHE INTERNAL "")
+set(GMT_PACKAGE_VERSION_WITH_GIT_REVISION "${GMT_PACKAGE_VERSION}" CACHE INTERNAL "")
+
 # Manually set variables that FindGSHHG.cmake would normally provide
 set(GSHHG_MIN_REQUIRED_VERSION_MAJOR 2 CACHE INTERNAL "")
 set(GSHHG_MIN_REQUIRED_VERSION_MINOR 2 CACHE INTERNAL "")
