@@ -22,7 +22,10 @@ Thumbs.db
 # Build
 /build/
 /tmp/
-/libs/
+
+# Library build artifacts (keep .a static libs)
+/libs/*
+!/libs/**/
 
 # CGo cache
 /tests/*.out

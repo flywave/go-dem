@@ -1,5 +1,3 @@
-//go:build htdp
-
 package datum
 
 /*
