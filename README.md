@@ -6,19 +6,24 @@
 
 ## 特性
 
+### 核心技术
+
+- **KDTree 空间索引** — 所有空间搜索算法 (IDW/CUBE/CUDEM/NaturalNeighbor) 使用 KDTree 替代暴力搜索，查询复杂度从 O(n) 优化到 O(log n)
+- **NoData 安全处理** — `NoData` 使用 `*float64` 指针类型，配合 `CoalesceNoData()` 和 `IsNoDataValue()` 消除零值歧义
+
 ### 格网化引擎 (waffle/)
 
 | 方法 | 说明 |
 |------|------|
-| IDW | 反距离加权插值，支持 PointsToGrid (C++) 和内存 IDW |
+| IDW | 反距离加权插值，KDTree 加速，支持 PointsToGrid (C++) 和内存 IDW |
 | Kriging | 高斯/指数/球状变差函数模型的普通克里金插值 |
 | Linear | 基于 Delaunay 三角剖分的线性插值 (含网格空间索引) |
 | Cubic | 基于 Delaunay 三角剖分的三次插值 |
 | Nearest | 最近邻插值 |
 | Natural Neighbor | Laplace (non-Sibsonian) 自然邻域插值 |
 | Inpaint | Fast Marching Method (Telea 2004) 影像修复填充 |
-| CUBE | Combined Uncertainty and Bathymetry Estimator |
-| CUDEM | 多分辨率 step-down 网格 (coarse-to-fine 策略) |
+| CUBE | CUBE v2: TVU/THU 逐点不确定性建模 + 密度模式聚类 + 信息准则 (AIC-like) 假设选择 + 邻域假设传播 |
+| CUDEM | 多分辨率 step-down: 局部点密度分位数动态层级选择 + KDTree 空间索引 + 不确定性加权跨层级融合 |
 
 ### 后处理引擎 (grits/)
 
