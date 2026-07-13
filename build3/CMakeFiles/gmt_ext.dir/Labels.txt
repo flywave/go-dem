@@ -1,0 +1,13 @@
+# Target labels
+ gmt_ext
+# Source files and their labels
+/Users/xuning/Work/go-dem/build3/CMakeFiles/gmt_ext
+/Users/xuning/Work/go-dem/build3/CMakeFiles/gmt_ext.rule
+/Users/xuning/Work/go-dem/build3/CMakeFiles/gmt_ext-complete.rule
+/Users/xuning/Work/go-dem/build3/gmt_ext-prefix/src/gmt_ext-stamp/gmt_ext-build.rule
+/Users/xuning/Work/go-dem/build3/gmt_ext-prefix/src/gmt_ext-stamp/gmt_ext-configure.rule
+/Users/xuning/Work/go-dem/build3/gmt_ext-prefix/src/gmt_ext-stamp/gmt_ext-download.rule
+/Users/xuning/Work/go-dem/build3/gmt_ext-prefix/src/gmt_ext-stamp/gmt_ext-install.rule
+/Users/xuning/Work/go-dem/build3/gmt_ext-prefix/src/gmt_ext-stamp/gmt_ext-mkdir.rule
+/Users/xuning/Work/go-dem/build3/gmt_ext-prefix/src/gmt_ext-stamp/gmt_ext-patch.rule
+/Users/xuning/Work/go-dem/build3/gmt_ext-prefix/src/gmt_ext-stamp/gmt_ext-update.rule

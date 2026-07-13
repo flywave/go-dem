@@ -1,0 +1,2 @@
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_r_frmt.a CMakeFiles/gdal_r_frmt.dir/gdal/frmts/r/rcreatecopy.cpp.o CMakeFiles/gdal_r_frmt.dir/gdal/frmts/r/rdataset.cpp.o
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_r_frmt.a
