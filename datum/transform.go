@@ -211,12 +211,41 @@ func (vt *VerticalTransform) htdpGrid(fromEPSG, toEPSG int) []float64 {
 		return grid
 	}
 
+	gridDef := [6]float64{
+		vt.geoTrans[0],
+		vt.geoTrans[3],
+		vt.geoTrans[0] + float64(vt.xCount)*vt.geoTrans[1],
+		vt.geoTrans[3] + float64(vt.yCount)*vt.geoTrans[5],
+		float64(vt.xCount),
+		float64(vt.yCount),
+	}
+
+	srcEpoch := frameIn.Epoch
+	if srcEpoch == 0 {
+		srcEpoch = 1997.0
+	}
+	dstEpoch := frameOut.Epoch
+	if dstEpoch == 0 {
+		dstEpoch = 2000.0
+	}
+
+	cg := cHTDPGrid(gridDef, frameIn.HTDPID, frameOut.HTDPID, srcEpoch, dstEpoch)
+	hasNonZero := false
+	for _, v := range cg {
+		if v != 0 {
+			hasNonZero = true
+			break
+		}
+	}
+	if hasNonZero {
+		return cg
+	}
+
 	if htdpExec, err := findHTDP(); err == nil {
 		return vt.htdpExecGrid(htdpExec, frameIn, frameOut)
 	}
 
 	grid = vt.computeGeoidGrid(geoid.EGM96)
-
 	return grid
 }
 
