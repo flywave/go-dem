@@ -1,11 +1,7 @@
 package datum
 
 import (
-	"fmt"
 	"math"
-	"os"
-	"os/exec"
-	"path/filepath"
 
 	"github.com/flywave/go-dem"
 	"github.com/flywave/go-geo"
@@ -202,13 +198,10 @@ func (vt *VerticalTransform) cdnTransform(fromEPSG, toEPSG int) []float64 {
 }
 
 func (vt *VerticalTransform) htdpGrid(fromEPSG, toEPSG int) []float64 {
-	n := vt.xCount * vt.yCount
-	grid := make([]float64, n)
-
 	frameIn := GetFrameByEPSG(fromEPSG)
 	frameOut := GetFrameByEPSG(toEPSG)
 	if frameIn == nil || frameOut == nil {
-		return grid
+		return make([]float64, vt.xCount*vt.yCount)
 	}
 
 	gridDef := [6]float64{
@@ -229,143 +222,7 @@ func (vt *VerticalTransform) htdpGrid(fromEPSG, toEPSG int) []float64 {
 		dstEpoch = 2000.0
 	}
 
-	cg := cHTDPGrid(gridDef, frameIn.HTDPID, frameOut.HTDPID, srcEpoch, dstEpoch)
-	hasNonZero := false
-	for _, v := range cg {
-		if v != 0 {
-			hasNonZero = true
-			break
-		}
-	}
-	if hasNonZero {
-		return cg
-	}
-
-	if htdpExec, err := findHTDP(); err == nil {
-		return vt.htdpExecGrid(htdpExec, frameIn, frameOut)
-	}
-
-	grid = vt.computeGeoidGrid(geoid.EGM96)
-	return grid
-}
-
-func findHTDP() (string, error) {
-	if p, err := exec.LookPath("htdp"); err == nil {
-		return p, nil
-	}
-	candidates := []string{
-		filepath.Join("libs", "darwin_arm", "htdp"),
-		filepath.Join("libs", "darwin", "htdp"),
-		filepath.Join("libs", "linux", "htdp"),
-		filepath.Join("libs", "linux_arm", "htdp"),
-		"/usr/local/bin/htdp",
-	}
-	for _, c := range candidates {
-		if _, err := os.Stat(c); err == nil {
-			if abs, err := filepath.Abs(c); err == nil {
-				return abs, nil
-			}
-			return c, nil
-		}
-	}
-	return "", fmt.Errorf("htdp not found")
-}
-
-func (vt *VerticalTransform) htdpExecGrid(htdpPath string, frameIn, frameOut *Frame) []float64 {
-	n := vt.xCount * vt.yCount
-	grid := make([]float64, n)
-
-	tmpDir, err := os.MkdirTemp("", "htdp_grid_*")
-	if err != nil {
-		return grid
-	}
-	defer os.RemoveAll(tmpDir)
-
-	inputPath := filepath.Join(tmpDir, "input.xyz")
-	ctrlPath := filepath.Join(tmpDir, "control.txt")
-	outputPath := filepath.Join(tmpDir, "output.xyz")
-
-	srcEpoch := frameIn.Epoch
-	if srcEpoch == 0 {
-		srcEpoch = 1997.0
-	}
-	dstEpoch := frameOut.Epoch
-	if dstEpoch == 0 {
-		dstEpoch = 2000.0
-	}
-
-	writeHTDPInput(vt.geoTrans, vt.xCount, vt.yCount, inputPath)
-	writeHTDPControl(ctrlPath, outputPath, inputPath, frameIn.HTDPID, srcEpoch, frameOut.HTDPID, dstEpoch)
-
-	cmd := exec.Command(htdpPath, ctrlPath)
-	cmd.Dir = tmpDir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return grid
-	} else {
-		_ = out
-	}
-
-	data, err := os.ReadFile(outputPath)
-	if err != nil {
-		return grid
-	}
-
-	line := 0
-	count := 0
-	for y := 0; y < vt.yCount && count < len(data); y++ {
-		for x := 0; x < vt.xCount && line < len(data); x++ {
-			for line < len(data) && (data[line] == '\n' || data[line] == '\r') {
-				line++
-			}
-			if line >= len(data) {
-				break
-			}
-			var lat, lon, h float64
-			var fid string
-			consumed := 0
-			for line+consumed < len(data) && data[line+consumed] != '\n' {
-				consumed++
-			}
-			lineStr := string(data[line : line+consumed])
-			fmt.Sscanf(lineStr, "%s %f %f %f", &fid, &lat, &lon, &h)
-			if y*vt.xCount+x < len(grid) {
-				grid[y*vt.xCount+x] = h
-			}
-			line += consumed
-		}
-	}
-
-	return grid
-}
-
-func writeHTDPInput(gt [6]float64, xCount, yCount int, path string) {
-	f, err := os.Create(path)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-
-	xMin := gt[0]
-	yMax := gt[3]
-	xInc := gt[1]
-	yInc := -gt[5]
-
-	for y := 0; y < yCount; y++ {
-		lat := yMax + float64(y)*yInc
-		for x := 0; x < xCount; x++ {
-			lon := xMin + float64(x)*xInc
-			fmt.Fprintf(f, "P %s %.8f %.8f 0.0\n", fmt.Sprintf("%d", y*xCount+x+1), lat, lon)
-		}
-	}
-}
-
-func writeHTDPControl(ctrlPath, outPath, inPath string, srcID int, srcEpoch float64, dstID int, dstEpoch float64) {
-	content := fmt.Sprintf(
-		"I\n%s\n%s\n1\n3\n%.4f %d %.4f %d\n5\n0\n0\n",
-		inPath, outPath,
-		srcEpoch, srcID, dstEpoch, dstID,
-	)
-	os.WriteFile(ctrlPath, []byte(content), 0644)
+	return cHTDPGrid(gridDef, frameIn.HTDPID, frameOut.HTDPID, srcEpoch, dstEpoch)
 }
 
 func computeGeoidGrid(region *dem.Region, model geoid.VerticalDatum) []float64 {
