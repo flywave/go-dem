@@ -1,12 +1,26 @@
 package dem
 
+import "math"
+
 const (
 	DefaultNoData float64 = -9999
 )
 
 func IsNoData(val, noData float64) bool {
-	return val == noData || val != val
+	return val == noData || math.IsNaN(val)
 }
+
+func IsNoDataValue(val float64) bool {
+	return val == DefaultNoData || math.IsNaN(val)
+}
+
+func CoalesceNoData(userVal *float64) float64 {
+	if userVal != nil {
+		return *userVal
+	}
+	return DefaultNoData
+}
+
 
 type InterpMethod string
 

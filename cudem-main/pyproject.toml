@@ -1,0 +1,132 @@
+### setup.py
+##
+## Copyright (c) 2020 - 2026 Regents of the University of Colorado
+##
+## Permission is hereby granted, free of charge, to any person obtaining a copy
+## of this software and associated documentation files (the "Software"), to deal
+## in the Software without restriction, including without limitation the rights
+## to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+## of the Software, and to permit persons to whom the Software is furnished to do so,
+## subject to the following conditions:
+##
+## The above copyright notice and this permission notice shall be included in all
+## copies or substantial portions of the Software.
+##
+## THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+## INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+## PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+## FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+## ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+## SOFTWARE.
+##
+### Commentary:
+##
+## Python build setup
+##
+### Code:
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cudem"
+version = "3.0.2"
+description = "Modules and scripts for processing Digital Elevation Models"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { file = "LICENSE" }
+authors = [
+    {name = "Matthew Love", email = "matthew.love@colorado.edu"},
+    {name = "Christopher Amante", email = "christopher.amante@colorado.edu"},
+    {name = "Elliot Lim", email = "elliot.lim@colorado.edu"},
+    {name = "Michael MacFerrin", email = "micael.macferrin@colorado.edu"},
+]
+maintainers = [
+    {name = "Matthew Love", email = "matthew.love@colorado.edu"},
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: GIS",
+]
+
+dependencies = [
+    "numpy", # system wide
+    "scipy", # waffles mods
+    "pyproj", # srsfun etc.
+    "requests[security]", # fetches
+    "lxml", # fetches xml parsing
+    "matplotlib", # uncertainty plots/perspecto mods
+    "laspy[lazrs,laszip]", # datalists.lasfile
+    "h5py", # datalists h5 parsing/globato
+    "boto3", # s3 support in fetches
+    "tqdm", # progress bar (optional)
+    "mercantile", # bing buildings
+    "utm", # bing buildings
+    "pandas", # icesat2 export
+    "netCDF4", # datalists netcdf support
+    "shapely", # geometry support
+]
+
+keywords = ["DEM", "bathymetry", "lidar", "topography", "NOAA", "GIS", "elevation"]
+
+# classifiers = [
+#     "Development Status :: 5 - Production/Stable",
+#     "Intended Audience :: Science/Research",
+#     "Programming Language :: Python :: 3",
+#     "Operating System :: OS Independent",
+#     "Topic :: Scientific/Engineering :: GIS",
+# ]
+
+[project.optional-dependencies]
+gdal = ["gdal"] # GDAL and bindings (may be installed via system)
+gmt = ["pygmt"]  # Optional GMT bindings
+scikit = ["scikit-image", "scikit-learn"] # Optional SciKit
+cv2 = ["cv2"] # Optional CV2 for waffles mods
+h3 = ["h3"] # Optional H3 support in inf generation.
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cudem*"]  # Glob patterns to include.
+exclude = ["tests*", "docs*", "scripts*"]  # Glob patterns to exclude.
+namespaces = false  # Set to true if you are using implicit namespace packages
+
+[project.scripts]
+## Core Modules
+fetches = "cudem.fetches.fetches:fetches_cli"
+#geofetch = "cudem.fetches.fetches:fetches_cli"
+#gfetch = "cudem.fetches.fetches:fetches_cli"
+dlim = "cudem.datalists.dlim:datalists_cli"
+waffles = "cudem.waffles.waffles:waffles_cli"
+grits = "cudem.grits.grits:grits_cli"
+pointz = "cudem.pointz:pointz_cli"
+
+## Utilities
+regions = "cudem.regions:regions_cli"
+vdatums = "cudem.vdatums:vdatums_cli"
+perspecto = "cudem.perspecto.perspecto:perspecto_cli"
+
+## Globato
+globato_converter = "cudem.globato.globato_converter:globato_converter_cli"
+spatial_metadata = "cudem.globato.spatial_metadata:spatial_metadata_cli"
+
+## Specific Fetch Tools
+bing_bfp = "cudem.fetches.bingbfp:bing_bfp_cli"
+osm_coast = "cudem.fetches.osm:osm_coast_cli"
+
+## Specific Data Tools
+datalist2json = "cudem.datalists.datalistfile:datalist2json_cli"
+
+[tool.setuptools.package-data]
+cudem = [
+    "data/*_errs.dat.gz",
+    "data/*.geojson",
+    "fetches/data/*.geojson"
+]
+
+[project.urls]
+Homepage = "https://github.com/ciresdem/cudem"
+Issues = "https://github.com/ciresdem/cudem/issues"
+
+### End

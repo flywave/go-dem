@@ -19,9 +19,11 @@ func init() {
 	})
 }
 
-type cudemLevel struct {
-	Scale      float64
-	Resolution float64
+type cudemCell struct {
+	mean   float64
+	stdDev float64
+	count  int
+	weight float64
 }
 
 func (cw *cudemWaffle) Run(sources []string, opts *Options) (*Result, error) {
@@ -44,196 +46,217 @@ func (cw *cudemWaffle) Run(sources []string, opts *Options) (*Result, error) {
 		noData = dem.DefaultNoData
 	}
 
-	levels := computeStepDownLevels(pts, region.XRes)
-
+	width := region.XSize
+	height := region.YSize
 	gt := region.GeoTransform()
-	w, h := region.XSize, region.YSize
 
-	demData := make([]float64, w*h)
-	for i := range demData {
-		demData[i] = noData
+	kdtree := NewKDTree(pts)
+
+	levels := computeLevelsByDensity(pts, kdtree, region.XRes, width, height, gt)
+	if len(levels) == 0 {
+		levels = []float64{region.XRes}
 	}
 
-	result := make([]float64, w*h)
-	count := make([]int, w*h)
+	type weightedCell struct {
+		mean   float64
+		weight float64
+		count  int
+	}
 
-	sort.Slice(levels, func(i, j int) bool {
-		return levels[i].Resolution > levels[j].Resolution
-	})
+	result := make([]weightedCell, width*height)
+	for i := range result {
+		result[i] = weightedCell{weight: 0, count: 0}
+	}
 
-	for li, level := range levels {
-
-		scale := level.Scale
-
-		gridW := int(math.Ceil(float64(w) / scale))
-		gridH := int(math.Ceil(float64(h) / scale))
-
-		gridData := make([]float64, gridW*gridH)
-		gridCount := make([]int, gridW*gridH)
-		for i := range gridData {
-			gridData[i] = noData
+	sort.Float64s(levels)
+	for li := len(levels) - 1; li >= 0; li-- {
+		res := levels[li]
+		scale := int(math.Round(res / region.XRes))
+		if scale < 1 {
+			scale = 1
 		}
 
-		res := level.Resolution
-		searchRadius := res * 3
+		gw := (width + scale - 1) / scale
+		gh := (height + scale - 1) / scale
+
+		grid := make([]*cudemCell, gw*gh)
+		searchR := res * 3
 
 		for i, pt := range pts {
 			gx := int(math.Floor((pt[0] - gt[0]) / res))
 			gy := int(math.Floor((pt[1] - gt[3]) / res))
-			if gx < 0 || gx >= gridW || gy < 0 || gy >= gridH {
+			if gx < 0 || gx >= gw || gy < 0 || gy >= gh {
 				continue
 			}
-			idx := gy*gridW + gx
-			if gridData[idx] == noData || math.IsNaN(gridData[idx]) {
-				gridData[idx] = zs[i]
-				gridCount[idx] = 1
+			idx := gy*gw + gx
+			if grid[idx] == nil {
+				grid[idx] = &cudemCell{mean: zs[i], count: 1, weight: 1.0}
 			} else {
-				gridData[idx] = (gridData[idx]*float64(gridCount[idx]) + zs[i]) / float64(gridCount[idx]+1)
-				gridCount[idx]++
+				c := grid[idx]
+				c.mean = (c.mean*float64(c.count) + zs[i]) / float64(c.count+1)
+				c.count++
 			}
 		}
 
-		filledGrid := make([]float64, gridW*gridH)
-		copy(filledGrid, gridData)
+		for gy := 0; gy < gh; gy++ {
+			for gx := 0; gx < gw; gx++ {
+				idx := gy*gw + gx
+				if grid[idx] != nil {
+					continue
+				}
+				geoX := gt[0] + (float64(gx)+0.5)*res
+				geoY := gt[3] + (float64(gy)+0.5)*res
+				q := vec2.T{geoX, geoY}
+				idxs, dists := kdtree.RadiusSearch(q, searchR)
+				if len(idxs) < 3 {
+					idxs2, dists2 := kdtree.KNN(q, 5)
+					idxs, dists = idxs2, dists2
+				}
+				if len(idxs) < 3 {
+					continue
+				}
+				var sumW, sumV, minDist float64
+				for i, idx := range idxs {
+					d := dists[i]
+					if d < 1e-10 {
+						sumV, sumW = zs[idx], 1
+						minDist = 0
+						break
+					}
+					w := 1.0 / (d*d + 1e-15)
+					sumW += w
+					sumV += w * zs[idx]
+					if i == 0 || d < minDist {
+						minDist = d
+					}
+				}
+				if sumW > 0 {
+					grid[idx] = &cudemCell{
+						mean:   sumV / sumW,
+						count:  len(idxs),
+						weight: 1.0 / (minDist + res*0.1),
+					}
+				}
+			}
+		}
 
-		for gy := 0; gy < gridH; gy++ {
-			for gx := 0; gx < gridW; gx++ {
-				idx := gy*gridW + gx
-				if filledGrid[idx] != noData && !math.IsNaN(filledGrid[idx]) {
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				idx := y*width + x
+				gx, gy := x/scale, y/scale
+				if gx >= gw || gy >= gh {
+					continue
+				}
+				cell := grid[gy*gw+gx]
+				if cell == nil {
 					continue
 				}
 
-				var sum, wSum float64
-				for dy := -3; dy <= 3; dy++ {
-					for dx := -3; dx <= 3; dx++ {
-						if dx == 0 && dy == 0 {
-							continue
-						}
-						nx, ny := gx+dx, gy+dy
-						if nx < 0 || nx >= gridW || ny < 0 || ny >= gridH {
-							continue
-						}
-						val := gridData[ny*gridW+nx]
-						if val == noData || math.IsNaN(val) {
-							continue
-						}
-						dist := math.Sqrt(float64(dx*dx + dy*dy))
-						if dist <= 3 {
-							weight := 1.0 / (dist*dist + 1e-15)
-							sum += val * weight
-							wSum += weight
-						}
-					}
-				}
-				if wSum > 0 {
-					filledGrid[idx] = sum / wSum
-				}
-			}
-		}
+				geoX := gt[0] + float64(x)*gt[1]
+				geoY := gt[3] + float64(y)*gt[5]
+				q := vec2.T{geoX, geoY}
+				localIdxs, _ := kdtree.RadiusSearch(q, res)
+				localCount := len(localIdxs)
 
-		for y := 0; y < h; y++ {
-			for x := 0; x < w; x++ {
-				idx := y*w + x
-				if li == 0 {
-					geoX := gt[0] + float64(x)*gt[1] + float64(y)*gt[2]
-					geoY := gt[3] + float64(x)*gt[4] + float64(y)*gt[5]
-
-					gx := int(math.Floor((geoX - gt[0]) / res))
-					gy := int(math.Floor((geoY - gt[3]) / res))
-
-					if gx >= 0 && gx < gridW && gy >= 0 && gy < gridH {
-						val := filledGrid[gy*gridW+gx]
-						if val != noData && !math.IsNaN(val) {
-							result[idx] = val
-							count[idx] = 1
-						}
-					}
+				if localCount >= 3 && res <= region.XRes*1.5 {
+					continue
 				}
 
-				if count[idx] > 0 && li > 0 {
-					geoX := gt[0] + float64(x)*gt[1] + float64(y)*gt[2]
-					geoY := gt[3] + float64(x)*gt[4] + float64(y)*gt[5]
+				cellWeight := cell.weight
+				if localCount > 0 {
+					cellWeight *= float64(cell.count) / float64(cell.count+localCount)
+				}
 
-					ptsInRadius := findPointsInRadius(pts, geoX, geoY, searchRadius)
-					if len(ptsInRadius) >= 3 {
-						continue
-					}
-
-					gx := int(math.Floor((geoX - gt[0]) / res))
-					gy := int(math.Floor((geoY - gt[3]) / res))
-
-					if gx >= 0 && gx < gridW && gy >= 0 && gy < gridH {
-						val := filledGrid[gy*gridW+gx]
-						if val != noData && !math.IsNaN(val) {
-							result[idx] = val
-						}
-					}
+				current := &result[idx]
+				if cellWeight > current.weight {
+					current.mean = cell.mean
+					current.weight = cellWeight
+					current.count = cell.count
+				} else if cellWeight > 0 && current.count > 0 {
+					totalW := current.weight + cellWeight
+					current.mean = (current.mean*current.weight + cell.mean*cellWeight) / totalW
+					current.weight = totalW
+					current.count += cell.count
 				}
 			}
 		}
 	}
 
-	for i := range result {
-		if result[i] == 0 && demData[i] != noData {
-			result[i] = demData[i]
-		}
-		if result[i] == noData || math.IsNaN(result[i]) {
-			result[i] = noData
+	demData := make([]float64, width*height)
+	for i := range demData {
+		if result[i].count > 0 {
+			demData[i] = result[i].mean
+		} else {
+			demData[i] = noData
 		}
 	}
 
-	return &Result{DEM: result, Region: region}, nil
+	return &Result{DEM: demData, Region: region}, nil
 }
 
-func computeStepDownLevels(pts []vec2.T, baseResolution float64) []cudemLevel {
-	xMin, xMax := pts[0][0], pts[0][0]
-	yMin, yMax := pts[0][1], pts[0][1]
+func computeLevelsByDensity(pts []vec2.T, kdtree *KDTree, baseRes float64, width, height int, gt [6]float64) []float64 {
+	type cellDensity struct {
+		cx, cy int
+		count  int
+	}
+
+	densityGrid := make(map[int]map[int]int)
+	step := 10
+	if step > width/4 {
+		step = width / 4
+	}
+	if step < 1 {
+		step = 1
+	}
+
 	for _, pt := range pts {
-		if pt[0] < xMin {
-			xMin = pt[0]
+		cx := int((pt[0]-gt[0])/gt[1]) / step
+		if cx < 0 {
+			cx = 0
 		}
-		if pt[0] > xMax {
-			xMax = pt[0]
+		cy := int((gt[3]-pt[1])/(-gt[5])) / step
+		if densityGrid[cy] == nil {
+			densityGrid[cy] = make(map[int]int)
 		}
-		if pt[1] < yMin {
-			yMin = pt[1]
-		}
-		if pt[1] > yMax {
-			yMax = pt[1]
+		densityGrid[cy][cx]++
+	}
+
+	var densities []int
+	for _, row := range densityGrid {
+		for _, c := range row {
+			if c > 0 {
+				densities = append(densities, c)
+			}
 		}
 	}
-	area := (xMax - xMin) * (yMax - yMin)
-	pointDensity := float64(len(pts)) / area
 
-	nLevels := 3
-	if pointDensity < 100 {
+	if len(densities) == 0 {
+		return []float64{baseRes}
+	}
+
+	sort.Ints(densities)
+	median := densities[len(densities)/2]
+
+	nLevels := 2
+	if median < 5 {
 		nLevels = 4
-	}
-	if pointDensity < 10 {
-		nLevels = 5
+	} else if median < 20 {
+		nLevels = 3
 	}
 
-	levels := make([]cudemLevel, nLevels)
+	levels := make([]float64, nLevels)
 	for i := 0; i < nLevels; i++ {
-		levels[i] = cudemLevel{
-			Scale:      math.Pow(2, float64(i)),
-			Resolution: baseResolution * math.Pow(2, float64(i)),
+		levels[i] = baseRes * math.Pow(2, float64(nLevels-1-i))
+	}
+
+	var unique []float64
+	seen := make(map[float64]bool)
+	for _, l := range levels {
+		if !seen[l] {
+			seen[l] = true
+			unique = append(unique, l)
 		}
 	}
-	return levels
+
+	return unique
 }
-
-func findPointsInRadius(pts []vec2.T, x, y, radius float64) []vec2.T {
-	var result []vec2.T
-	radiusSq := radius * radius
-	for _, pt := range pts {
-		dx := x - pt[0]
-		dy := y - pt[1]
-		if dx*dx+dy*dy <= radiusSq {
-			result = append(result, pt)
-		}
-	}
-	return result
-}
-
-

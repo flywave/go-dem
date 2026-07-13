@@ -99,6 +99,8 @@ func (w *idwWaffle) runMemoryIDW(sources []string, region *dem.Region, opts *Opt
 		demData[i] = noData
 	}
 
+	kdtree := NewKDTree(pts)
+
 	gt := region.GeoTransform()
 	searchRadius := opts.SearchRadius
 	if searchRadius <= 0 {
@@ -115,29 +117,45 @@ func (w *idwWaffle) runMemoryIDW(sources []string, region *dem.Region, opts *Opt
 			geoX := gt[0] + float64(x)*gt[1] + float64(y)*gt[2]
 			geoY := gt[3] + float64(x)*gt[4] + float64(y)*gt[5]
 
-			var sumWeight, sumValue float64
-			count := 0
+			q := vec2.T{geoX, geoY}
+			idxs, dists := kdtree.RadiusSearch(q, searchRadius)
 
-			for i, pt := range pts {
-				dx := geoX - pt[0]
-				dy := geoY - pt[1]
-				dist := math.Sqrt(dx*dx + dy*dy)
-				if dist > searchRadius {
-					continue
+			if len(idxs) < minPoints {
+				idxs2, dists2 := kdtree.KNN(q, minPoints)
+				if len(idxs2) >= minPoints {
+					var sumWeight, sumValue float64
+					for i, idx := range idxs2 {
+						d := dists2[i]
+						if d < 1e-10 {
+							sumValue = zs[idx]
+							sumWeight = 1
+							break
+						}
+						weight := 1.0 / math.Pow(d, power)
+						sumWeight += weight
+						sumValue += weight * zs[idx]
+					}
+					if sumWeight > 0 {
+						demData[y*region.XSize+x] = sumValue / sumWeight
+					}
 				}
-				if dist < 1e-10 {
-					sumValue = zs[i]
-					sumWeight = 1
-					count = 1
-					break
-				}
-				weight := 1.0 / math.Pow(dist, power)
-				sumWeight += weight
-				sumValue += weight * zs[i]
-				count++
+				continue
 			}
 
-			if count >= minPoints && sumWeight > 0 {
+			var sumWeight, sumValue float64
+			for i, idx := range idxs {
+				d := dists[i]
+				if d < 1e-10 {
+					sumValue = zs[idx]
+					sumWeight = 1
+					break
+				}
+				weight := 1.0 / math.Pow(d, power)
+				sumWeight += weight
+				sumValue += weight * zs[idx]
+			}
+
+			if minPoints <= len(idxs) && sumWeight > 0 {
 				demData[y*region.XSize+x] = sumValue / sumWeight
 			}
 		}
@@ -174,6 +192,9 @@ func collectPoints(sources []string) ([]vec2.T, []float64, error) {
 }
 
 func isLASFile(path string) bool {
+	if len(path) < 4 {
+		return false
+	}
 	ext := path[len(path)-4:]
 	return ext == ".las" || ext == ".laz"
 }

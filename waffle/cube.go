@@ -6,10 +6,17 @@ import (
 	"sort"
 
 	"github.com/flywave/go-dem"
+	"github.com/flywave/go3d/float64/vec2"
 )
 
 type cubeWaffle struct {
 	baseWaffle
+}
+
+type soundingParams struct {
+	TVUa float64
+	TVUb float64
+	THU  float64
 }
 
 func init() {
@@ -18,19 +25,15 @@ func init() {
 	})
 }
 
-type cubeParams struct {
-	Resolution      float64
-	SearchRadius    float64
-	MinPoints       int
-	MaxPoints       int
-	IQRMultiplier   float64
-	VerticalUnc     float64
-}
-
 type cubeHypothesis struct {
 	mean   float64
 	stdDev float64
 	count  int
+	score  float64
+}
+
+func tvu(depth, a, b float64) float64 {
+	return math.Sqrt(a*a + (b*depth)*(b*depth))
 }
 
 func (cw *cubeWaffle) Run(sources []string, opts *Options) (*Result, error) {
@@ -53,84 +56,147 @@ func (cw *cubeWaffle) Run(sources []string, opts *Options) (*Result, error) {
 		noData = dem.DefaultNoData
 	}
 
-	params := cubeParams{
-		Resolution:    region.XRes,
-		SearchRadius:  region.XRes * 3,
-		MinPoints:     5,
-		MaxPoints:     30,
-		IQRMultiplier: 1.5,
-		VerticalUnc:   0.2,
+	sParams := soundingParams{
+		TVUa: 0.2,
+		TVUb: 0.01,
+		THU:  2.0,
 	}
 
-	gt := region.GeoTransform()
+	kdtree := NewKDTree(pts)
 	width := region.XSize
 	height := region.YSize
 
 	demData := make([]float64, width*height)
 	uncData := make([]float64, width*height)
+	hypCount := make([]int, width*height)
 
 	for i := range demData {
 		demData[i] = noData
 		uncData[i] = noData
 	}
 
+	cellHypotheses := make([][]cubeHypothesis, width*height)
+	for i := range cellHypotheses {
+		cellHypotheses[i] = nil
+	}
+
+	gt := region.GeoTransform()
+	searchRadius := region.XRes * 3
+	thuCells := int(math.Ceil(sParams.THU / region.XRes))
+
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
 			geoX := gt[0] + float64(x)*gt[1] + float64(y)*gt[2]
 			geoY := gt[3] + float64(x)*gt[4] + float64(y)*gt[5]
 
-			var depthsInCell []float64
-			for i, pt := range pts {
-				dx := geoX - pt[0]
-				dy := geoY - pt[1]
-				dist := math.Sqrt(dx*dx + dy*dy)
-				if dist <= params.SearchRadius {
-					depthsInCell = append(depthsInCell, zs[i])
+			q := vec2.T{geoX, geoY}
+			searchR := searchRadius + sParams.THU
+			idxs, _ := kdtree.RadiusSearch(q, searchR)
+			if len(idxs) < 5 {
+				idxs2, _ := kdtree.KNN(q, 5)
+				idxs = idxs2
+			}
+			if len(idxs) < 3 {
+				continue
+			}
+
+			depths := make([]float64, len(idxs))
+			weights := make([]float64, len(idxs))
+			for i, idx := range idxs {
+				depths[i] = zs[idx]
+				d := math.Sqrt(distSq(geoX, geoY, pts[idx][0], pts[idx][1]))
+				weights[i] = 1.0 / (tvu(zs[idx], sParams.TVUa, sParams.TVUb) + 0.01)
+				if d > 0 {
+					weights[i] /= d
 				}
 			}
 
-			if len(depthsInCell) < params.MinPoints {
+			h := densityClusterHypotheses(depths, weights, sParams)
+
+			for _, neighborHyp := range cellHypotheses[max(0, y-thuCells)*width+max(0, x-thuCells)] {
+				if y+thuCells < height && x+thuCells < width {
+					_ = neighborHyp
+				}
+			}
+
+			if len(h) == 0 {
 				continue
 			}
 
-			if len(depthsInCell) > params.MaxPoints {
-				sort.Float64s(depthsInCell)
-				depthsInCell = depthsInCell[:params.MaxPoints]
-			}
-
-			hypotheses := buildCUBEHypotheses(depthsInCell, params)
-			if len(hypotheses) == 0 {
-				continue
-			}
-
-			bestHyp := selectBestHypothesis(hypotheses, depthsInCell)
-			if bestHyp == nil {
+			best := selectHypothesisByIC(h, depths, weights)
+			if best == nil {
 				continue
 			}
 
 			idx := y*width + x
-			demData[idx] = bestHyp.mean
-			uncData[idx] = bestHyp.stdDev
+			demData[idx] = best.mean
+			uncData[idx] = best.stdDev
+			hypCount[idx] = best.count
+
+			cellHypotheses[idx] = h
 		}
 	}
 
-	result := &Result{
+	for iter := 0; iter < 2; iter++ {
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				idx := y*width + x
+				if demData[idx] != noData {
+					continue
+				}
+
+				var merged []cubeHypothesis
+				for dy := -2; dy <= 2; dy++ {
+					for dx := -2; dx <= 2; dx++ {
+						nx, ny := x+dx, y+dy
+						if nx < 0 || nx >= width || ny < 0 || ny >= height {
+							continue
+						}
+						nidx := ny*width + nx
+						merged = append(merged, cellHypotheses[nidx]...)
+					}
+				}
+				if len(merged) > 0 {
+					best := selectHypothesisByIC(merged, nil, nil)
+					if best != nil {
+						demData[idx] = best.mean
+						uncData[idx] = best.stdDev * 1.5
+						hypCount[idx] = best.count
+					}
+				}
+			}
+		}
+	}
+
+	return &Result{
 		DEM:    demData,
 		Region: region,
 		Stack:  [][]float64{demData, uncData},
-	}
-
-	return result, nil
+	}, nil
 }
 
-func buildCUBEHypotheses(depths []float64, params cubeParams) []cubeHypothesis {
-	if len(depths) < params.MinPoints {
+func densityClusterHypotheses(depths, weights []float64, sp soundingParams) []cubeHypothesis {
+	if len(depths) < 3 {
 		return nil
 	}
 
-	sorted := make([]float64, len(depths))
-	copy(sorted, depths)
-	sort.Float64s(sorted)
+	type dp struct {
+		depth  float64
+		weight float64
+	}
+	sorted := make([]dp, len(depths))
+	for i := range depths {
+		sorted[i] = dp{depths[i], weights[i]}
+	}
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].depth < sorted[j].depth })
+
+	q1 := sorted[len(sorted)/4].depth
+	q3 := sorted[len(sorted)*3/4].depth
+	iqr := q3 - q1
+	bandwidth := iqr * 1.5
+	if bandwidth < tvu(sorted[len(sorted)/2].depth, sp.TVUa, sp.TVUb) {
+		bandwidth = tvu(sorted[len(sorted)/2].depth, sp.TVUa, sp.TVUb)
+	}
 
 	var hypotheses []cubeHypothesis
 	used := make([]bool, len(sorted))
@@ -139,23 +205,39 @@ func buildCUBEHypotheses(depths []float64, params cubeParams) []cubeHypothesis {
 		if used[i] {
 			continue
 		}
-
-		var cluster []float64
+		var cluster []dp
 		cluster = append(cluster, sorted[i])
 		used[i] = true
 
+		clusterMean := sorted[i].depth
 		for j := i + 1; j < len(sorted); j++ {
 			if used[j] {
 				continue
 			}
-			if math.Abs(sorted[j]-sorted[i]) <= params.IQRMultiplier*params.VerticalUnc {
+			if math.Abs(sorted[j].depth-clusterMean) <= bandwidth {
 				cluster = append(cluster, sorted[j])
 				used[j] = true
+				n := float64(len(cluster))
+				clusterMean = clusterMean*(n-1)/n + sorted[j].depth/n
 			}
 		}
 
-		if len(cluster) >= params.MinPoints {
-			mean, stdDev := computeStats(cluster)
+		if len(cluster) >= 3 {
+			var mean, sumW float64
+			for _, p := range cluster {
+				mean += p.depth * p.weight
+				sumW += p.weight
+			}
+			if sumW > 0 {
+				mean /= sumW
+			}
+			var variance float64
+			for _, p := range cluster {
+				d := p.depth - mean
+				variance += d * d * p.weight
+			}
+			stdDev := math.Sqrt(variance / sumW)
+
 			hypotheses = append(hypotheses, cubeHypothesis{
 				mean:   mean,
 				stdDev: stdDev,
@@ -167,7 +249,7 @@ func buildCUBEHypotheses(depths []float64, params cubeParams) []cubeHypothesis {
 	return hypotheses
 }
 
-func selectBestHypothesis(hypotheses []cubeHypothesis, depths []float64) *cubeHypothesis {
+func selectHypothesisByIC(hypotheses []cubeHypothesis, depths, weights []float64) *cubeHypothesis {
 	if len(hypotheses) == 0 {
 		return nil
 	}
@@ -175,21 +257,32 @@ func selectBestHypothesis(hypotheses []cubeHypothesis, depths []float64) *cubeHy
 		return &hypotheses[0]
 	}
 
-	bestIdx := 0
+	n := float64(len(depths))
+	if n == 0 {
+		n = 1
+	}
+
 	bestScore := math.MaxFloat64
+	bestIdx := 0
 
 	for i, h := range hypotheses {
-		var score float64
-		for _, d := range depths {
-			diff := math.Abs(d - h.mean)
-			if h.stdDev > 0 {
-				score += diff / h.stdDev
-			} else {
-				score += diff
+		logLikelihood := 0.0
+		if depths != nil {
+			for _, d := range depths {
+				if h.stdDev > 1e-15 {
+					dev := (d - h.mean) / h.stdDev
+					logLikelihood -= 0.5 * dev * dev
+				}
 			}
+		} else {
+			logLikelihood = -float64(h.count)
 		}
-		score /= float64(len(depths))
-		score -= float64(h.count) * 0.1
+
+		k := float64(len(hypotheses))
+		score := -2*logLikelihood + k*math.Log(n)
+
+		bonus := float64(h.count) * 0.2
+		score -= bonus
 
 		if score < bestScore {
 			bestScore = score
@@ -200,19 +293,11 @@ func selectBestHypothesis(hypotheses []cubeHypothesis, depths []float64) *cubeHy
 	return &hypotheses[bestIdx]
 }
 
-func computeStats(vals []float64) (mean, stdDev float64) {
-	n := float64(len(vals))
-	if n == 0 {
-		return 0, 0
+func max(a, b int) int {
+	if a > b {
+		return a
 	}
-	for _, v := range vals {
-		mean += v
-	}
-	mean /= n
-	for _, v := range vals {
-		diff := v - mean
-		stdDev += diff * diff
-	}
-	stdDev = math.Sqrt(stdDev / n)
-	return
+	return b
 }
+
+func (cw *cubeWaffle) Name() string { return cw.name }

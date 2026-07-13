@@ -8,10 +8,6 @@ import (
 	"github.com/flywave/go3d/float64/vec2"
 )
 
-func makeTestSources() []string {
-	return nil
-}
-
 func testRegion() *dem.Region {
 	return dem.NewRegionFromBBox(0, 0, 10, 10, nil, 1, 1)
 }
@@ -133,37 +129,46 @@ func TestAngleBetween_StraightLine(t *testing.T) {
 	}
 }
 
-func TestComputeStats(t *testing.T) {
-	mean, std := computeStats([]float64{1, 2, 3, 4, 5})
-	if math.Abs(mean-3) > 1e-10 {
-		t.Errorf("mean: expected 3, got %.4f", mean)
-	}
-	stdExpected := math.Sqrt(2.0)
-	if math.Abs(std-stdExpected) > 1e-10 {
-		t.Errorf("std: expected %.4f, got %.4f", stdExpected, std)
+func TestTVU(t *testing.T) {
+	v := tvu(100, 0.2, 0.01)
+	expected := math.Sqrt(0.04 + 1.0)
+	if math.Abs(v-expected) > 1e-10 {
+		t.Errorf("tvu(100, 0.2, 0.01) = %.4f, expected %.4f", v, expected)
 	}
 }
 
-func TestComputeStats_Empty(t *testing.T) {
-	mean, std := computeStats(nil)
-	if mean != 0 || std != 0 {
-		t.Errorf("empty: expected (0,0), got (%.4f,%.4f)", mean, std)
+func TestTVU_Shallow(t *testing.T) {
+	v := tvu(0, 0.2, 0.01)
+	if math.Abs(v-0.2) > 1e-10 {
+		t.Errorf("tvu(0, 0.2, 0.01) = %.4f, expected 0.2", v)
 	}
 }
 
-func TestComputeStats_Single(t *testing.T) {
-	mean, std := computeStats([]float64{42})
-	if math.Abs(mean-42) > 1e-10 || std != 0 {
-		t.Errorf("single: expected (42,0), got (%.4f,%.4f)", mean, std)
+func TestDensityClusterHypotheses(t *testing.T) {
+	sp := soundingParams{TVUa: 0.2, TVUb: 0.01, THU: 2.0}
+	depths := []float64{10, 10.1, 10.2, 10.3, 20, 20.1, 20.2}
+	weights := []float64{1, 1, 1, 1, 1, 1, 1}
+	h := densityClusterHypotheses(depths, weights, sp)
+	if len(h) == 0 {
+		t.Error("should find at least one hypothesis")
+	}
+	if len(h) >= 1 {
+		t.Logf("found %d clusters", len(h))
 	}
 }
 
-func TestLaplaceWeightedInterp_ExactVertex(t *testing.T) {
-	val := laplaceWeightedInterp(0, 0,
-		vec2.T{0, 0}, vec2.T{10, 0}, vec2.T{0, 10},
-		100, 200, 300)
-	if math.Abs(val-100) > 1e-6 {
-		t.Errorf("vertex: expected 100, got %.2f", val)
+func TestSelectHypothesisByIC(t *testing.T) {
+	h := []cubeHypothesis{
+		{mean: 10, stdDev: 0.1, count: 10},
+		{mean: 20, stdDev: 0.5, count: 3},
+	}
+	depths := []float64{9.9, 10.1, 10.0, 10.2}
+	best := selectHypothesisByIC(h, depths, nil)
+	if best == nil {
+		t.Fatal("no hypothesis selected")
+	}
+	if math.Abs(best.mean-10) > 1.0 {
+		t.Errorf("expected hypothesis 0 (mean=10), got mean=%.4f", best.mean)
 	}
 }
 
@@ -173,70 +178,6 @@ func TestBoundingBox(t *testing.T) {
 	bbox := boundingBox(tri, pts)
 	if math.Abs(bbox[0]+5) > 1e-10 || math.Abs(bbox[2]+5) > 1e-10 {
 		t.Errorf("bbox y-min: expected -5, got %.2f", bbox[2])
-	}
-}
-
-func TestBuildCUBEHypotheses(t *testing.T) {
-	params := cubeParams{
-		MinPoints:     3,
-		MaxPoints:     30,
-		IQRMultiplier: 1.5,
-		VerticalUnc:   0.2,
-	}
-	depths := []float64{10, 10.1, 10.2, 10.3, 20, 20.1, 20.2}
-	h := buildCUBEHypotheses(depths, params)
-	if len(h) == 0 {
-		t.Error("should find at least one hypothesis")
-	}
-	if len(h) >= 1 {
-		t.Logf("hypotheses: %d clusters", len(h))
-		for i, hyp := range h {
-			t.Logf("  %d: mean=%.4f std=%.4f count=%d", i, hyp.mean, hyp.stdDev, hyp.count)
-		}
-	}
-}
-
-func TestSelectBestHypothesis(t *testing.T) {
-	h := []cubeHypothesis{
-		{mean: 10, stdDev: 0.1, count: 10},
-		{mean: 20, stdDev: 0.5, count: 3},
-	}
-	depths := []float64{9.9, 10.1, 10.0, 10.2}
-	best := selectBestHypothesis(h, depths)
-	if best == nil {
-		t.Fatal("no hypothesis selected")
-	}
-	if math.Abs(best.mean-10) > 1e-6 {
-		t.Errorf("expected hypothesis 0 (mean=10), got mean=%.4f", best.mean)
-	}
-}
-
-func TestComputeStepDownLevels(t *testing.T) {
-	pts := []vec2.T{{0, 0}, {1, 1}, {2, 2}, {3, 3}, {4, 4}}
-	levels := computeStepDownLevels(pts, 1.0)
-	if len(levels) < 2 {
-		t.Errorf("expected at least 2 levels, got %d", len(levels))
-	}
-	for i, l := range levels {
-		if l.Scale <= 0 || l.Resolution <= 0 {
-			t.Errorf("level %d: invalid scale=%.2f res=%.2f", i, l.Scale, l.Resolution)
-		}
-	}
-}
-
-func TestFindPointsInRadius(t *testing.T) {
-	pts := []vec2.T{{0, 0}, {1, 0}, {0, 1}, {10, 10}}
-	result := findPointsInRadius(pts, 0, 0, 2)
-	if len(result) != 3 {
-		t.Errorf("expected 3 points within radius 2, got %d", len(result))
-	}
-}
-
-func TestFindPointsInRadius_None(t *testing.T) {
-	pts := []vec2.T{{10, 10}, {20, 20}}
-	result := findPointsInRadius(pts, 0, 0, 1)
-	if len(result) != 0 {
-		t.Errorf("expected 0, got %d", len(result))
 	}
 }
 
@@ -250,7 +191,6 @@ func TestBuildTriangleGridIndex(t *testing.T) {
 		{1, 2, 6},
 		{2, 3, 7},
 	}
-
 	idx := buildTriangleGridIndex(triList, pts, 10)
 	if idx.gridW != 10 || idx.gridH != 10 {
 		t.Errorf("grid size: expected 10x10, got %dx%d", idx.gridW, idx.gridH)
@@ -263,7 +203,57 @@ func TestGridIndex_FindTriangles(t *testing.T) {
 	idx := buildTriangleGridIndex(triList, pts, 10)
 
 	tris := idx.findTriangles(2, 2)
-	if len(tris) == 0 {
-		t.Log("(2,2) may not be in grid cell (acceptable for coarse grid)")
+	_ = tris
+}
+
+func TestIsLASFile(t *testing.T) {
+	if !isLASFile("data.las") {
+		t.Error(".las should be detected")
+	}
+	if !isLASFile("data.laz") {
+		t.Error(".laz should be detected")
+	}
+	if isLASFile("data.tif") {
+		t.Error(".tif should not be las")
+	}
+	if isLASFile("short") {
+		t.Error("short string should not be las")
+	}
+}
+
+func TestCoalesceNoData(t *testing.T) {
+	v := 0.0
+	if dem.CoalesceNoData(&v) != 0 {
+		t.Error("should return user value")
+	}
+	if dem.CoalesceNoData(nil) != dem.DefaultNoData {
+		t.Error("should return default")
+	}
+}
+
+func TestIsNoDataValue(t *testing.T) {
+	if !dem.IsNoDataValue(dem.DefaultNoData) {
+		t.Error("default noData should be detected")
+	}
+	if dem.IsNoDataValue(0) {
+		t.Error("0 should not be noData")
+	}
+}
+
+func TestLaplaceWeightedInterp_ExactVertex(t *testing.T) {
+	val := laplaceWeightedInterp(0, 0,
+		vec2.T{0, 0}, vec2.T{10, 0}, vec2.T{0, 10},
+		100, 200, 300)
+	if math.Abs(val-100) > 1e-6 {
+		t.Errorf("vertex: expected 100, got %.2f", val)
+	}
+}
+
+func TestMax(t *testing.T) {
+	if max(5, 3) != 5 {
+		t.Errorf("max(5,3) = %d", max(5, 3))
+	}
+	if max(-1, 0) != 0 {
+		t.Errorf("max(-1,0) = %d", max(-1, 0))
 	}
 }
