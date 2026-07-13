@@ -1,8 +1,8 @@
 package waffle
 
 import (
+	"container/heap"
 	"math"
-	"sort"
 
 	"github.com/flywave/go-dem"
 )
@@ -62,18 +62,20 @@ const (
 type fmmPixel struct {
 	x, y int
 	dist float64
+	idx  int
 }
 
 type fmmPriorityQueue []fmmPixel
 
-func (pq fmmPriorityQueue) Len() int           { return len(pq) }
-func (pq fmmPriorityQueue) Less(i, j int) bool { return pq[i].dist < pq[j].dist }
-func (pq fmmPriorityQueue) Swap(i, j int)      { pq[i], pq[j] = pq[j], pq[i] }
-func (pq *fmmPriorityQueue) Push(x interface{}) { *pq = append(*pq, x.(fmmPixel)) }
+func (pq fmmPriorityQueue) Len() int            { return len(pq) }
+func (pq fmmPriorityQueue) Less(i, j int) bool  { return pq[i].dist < pq[j].dist }
+func (pq fmmPriorityQueue) Swap(i, j int)       { pq[i], pq[j] = pq[j], pq[i]; pq[i].idx = i; pq[j].idx = j }
+func (pq *fmmPriorityQueue) Push(x interface{}) { n := len(*pq); item := x.(fmmPixel); item.idx = n; *pq = append(*pq, item) }
 func (pq *fmmPriorityQueue) Pop() interface{} {
 	old := *pq
 	n := len(old)
 	item := old[n-1]
+	item.idx = -1
 	*pq = old[:n-1]
 	return item
 }
@@ -105,7 +107,8 @@ func inpaintFMM(data []float64, w, h int, noData float64) []float64 {
 		return result
 	}
 
-	pq := make(fmmPriorityQueue, 0)
+	pq := &fmmPriorityQueue{}
+	heap.Init(pq)
 
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
@@ -124,7 +127,7 @@ func inpaintFMM(data []float64, w, h int, noData float64) []float64 {
 					if flag[ny*w+nx] == BAND_KNOWN {
 						flag[y*w+x] = BAND_BAND
 						dist[y*w+x] = 0
-						pq = append(pq, fmmPixel{x, y, 0})
+						heap.Push(pq, fmmPixel{x: x, y: y, dist: 0})
 						goto nextBandInit
 					}
 				}
@@ -133,14 +136,12 @@ func inpaintFMM(data []float64, w, h int, noData float64) []float64 {
 		}
 	}
 
-	if len(pq) == 0 {
+	if pq.Len() == 0 {
 		return result
 	}
 
-	for len(pq) > 0 {
-		sort.Sort(pq)
-		p := pq[0]
-		pq = pq[1:]
+	for pq.Len() > 0 {
+		p := heap.Pop(pq).(fmmPixel)
 
 		px, py := p.x, p.y
 		pIdx := py*w + px
@@ -170,7 +171,7 @@ func inpaintFMM(data []float64, w, h int, noData float64) []float64 {
 					if newDist < dist[nIdx] {
 						dist[nIdx] = newDist
 					}
-					pq = append(pq, fmmPixel{nx, ny, dist[nIdx]})
+					heap.Push(pq, fmmPixel{x: nx, y: ny, dist: dist[nIdx]})
 				} else if flag[nIdx] == BAND_BAND {
 					newDist := math.Sqrt(float64(dx*dx + dy*dy))
 					if newDist < dist[nIdx] {

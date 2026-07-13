@@ -15,7 +15,7 @@ type naturalNeighborWaffle struct {
 
 func init() {
 	Register(dem.MethodNaturalNeighbor, func() Waffle {
-		return &naturalNeighborWaffle{baseWaffle: baseWaffle{name: string(dem.MethodNaturalNeighbor)}}
+		return &naturalNeighborWaffle{baseWaffle: baseWaffle{name: "laplace_interp"}}
 	})
 }
 

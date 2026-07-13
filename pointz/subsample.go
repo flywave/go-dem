@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/flywave/flywave-pointcloud"
-	"github.com/flywave/flywave-pointcloud/pdal"
+	_ "github.com/flywave/flywave-pointcloud/pdal"
 )
 
 type SubsampleMethod string
@@ -37,6 +37,15 @@ func SubsamplePointCloud(opts *SubsampleOptions) error {
 		return fmt.Errorf("unknown subsample method: %s", opts.Method)
 	}
 
+	cfg := pointcloud.Metadata{
+		Input:  opts.InputPath,
+		Output: opts.OutputPath,
+	}
+	ctx := pointcloud.NewReaderContext(&cfg)
+	if ctx == nil {
+		return fmt.Errorf("failed to create reader context for %s", opts.InputPath)
+	}
+
 	subOpts := pointcloud.SubsampleOptions{
 		Method:     method,
 		SampleSize: opts.SampleSize,
@@ -45,12 +54,7 @@ func SubsamplePointCloud(opts *SubsampleOptions) error {
 		OutputPath: opts.OutputPath,
 	}
 
-	ctx := pdal.NewReaderContext("")
-	if ctx == nil {
-		return fmt.Errorf("failed to create pdal reader context")
-	}
-
-	return pointcloud.Subsample(ctx, subOpts)
+	return pointcloud.Subsample(&ctx.ReaderContext, subOpts)
 }
 
 func VoxelDownsample(inputPath, outputPath string, voxelSize float64) error {

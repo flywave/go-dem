@@ -1,6 +1,7 @@
 package waffle
 
 import (
+	"container/heap"
 	"math"
 	"sort"
 
@@ -45,7 +46,6 @@ func buildKDTree(pts []vec2.T, indices []int, depth int) *KDNode {
 		return nil
 	}
 	axis := depth % 2
-
 	sort.Sort(kdSortable{pts: pts, idx: indices, axis: axis})
 	mid := len(indices) / 2
 
@@ -58,28 +58,45 @@ func buildKDTree(pts []vec2.T, indices []int, depth int) *KDNode {
 	}
 }
 
-type neighborEntry struct {
-	index int
+type maxHeapEntry struct {
 	dist2 float64
+	index int
+}
+
+type maxHeap []maxHeapEntry
+
+func (h maxHeap) Len() int           { return len(h) }
+func (h maxHeap) Less(i, j int) bool { return h[i].dist2 > h[j].dist2 }
+func (h maxHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *maxHeap) Push(x interface{}) { *h = append(*h, x.(maxHeapEntry)) }
+func (h *maxHeap) Pop() interface{} {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[:n-1]
+	return x
 }
 
 func (t *KDTree) KNN(q vec2.T, k int) ([]int, []float64) {
 	if t.Root == nil || k <= 0 {
 		return nil, nil
 	}
-	neighbors := make([]neighborEntry, 0, k)
-	t.knnSearch(t.Root, q, k, 0, &neighbors)
+	h := &maxHeap{}
+	heap.Init(h)
+	t.knnSearch(t.Root, q, k, 0, h)
 
-	idxs := make([]int, len(neighbors))
-	dists := make([]float64, len(neighbors))
-	for i, n := range neighbors {
-		idxs[i] = n.index
-		dists[i] = math.Sqrt(n.dist2)
+	n := h.Len()
+	idxs := make([]int, n)
+	dists := make([]float64, n)
+	for i := n - 1; i >= 0; i-- {
+		entry := heap.Pop(h).(maxHeapEntry)
+		idxs[i] = entry.index
+		dists[i] = math.Sqrt(entry.dist2)
 	}
 	return idxs, dists
 }
 
-func (t *KDTree) knnSearch(node *KDNode, q vec2.T, k int, depth int, neighbors *[]neighborEntry) {
+func (t *KDTree) knnSearch(node *KDNode, q vec2.T, k int, depth int, h *maxHeap) {
 	if node == nil {
 		return
 	}
@@ -88,18 +105,11 @@ func (t *KDTree) knnSearch(node *KDNode, q vec2.T, k int, depth int, neighbors *
 	dy := q[1] - node.Point[1]
 	dist2 := dx*dx + dy*dy
 
-	if len(*neighbors) < k {
-		*neighbors = append(*neighbors, neighborEntry{node.Index, dist2})
-		if len(*neighbors) == k {
-			sort.Slice(*neighbors, func(i, j int) bool {
-				return (*neighbors)[i].dist2 < (*neighbors)[j].dist2
-			})
-		}
-	} else if dist2 < (*neighbors)[k-1].dist2 {
-		(*neighbors)[k-1] = neighborEntry{node.Index, dist2}
-		sort.Slice(*neighbors, func(i, j int) bool {
-			return (*neighbors)[i].dist2 < (*neighbors)[j].dist2
-		})
+	if h.Len() < k {
+		heap.Push(h, maxHeapEntry{dist2, node.Index})
+	} else if dist2 < (*h)[0].dist2 {
+		heap.Pop(h)
+		heap.Push(h, maxHeapEntry{dist2, node.Index})
 	}
 
 	axis := depth % 2
@@ -112,10 +122,10 @@ func (t *KDTree) knnSearch(node *KDNode, q vec2.T, k int, depth int, neighbors *
 		first, second = node.Right, node.Left
 	}
 
-	t.knnSearch(first, q, k, depth+1, neighbors)
+	t.knnSearch(first, q, k, depth+1, h)
 
-	if len(*neighbors) < k || diff*diff < (*neighbors)[k-1].dist2 {
-		t.knnSearch(second, q, k, depth+1, neighbors)
+	if h.Len() < k || diff*diff < (*h)[0].dist2 {
+		t.knnSearch(second, q, k, depth+1, h)
 	}
 }
 
@@ -126,6 +136,7 @@ func (t *KDTree) RadiusSearch(q vec2.T, radius float64) ([]int, []float64) {
 	radius2 := radius * radius
 	var results []neighborEntry
 	t.radiusSearch(t.Root, q, radius2, 0, &results)
+
 	idxs := make([]int, len(results))
 	dists := make([]float64, len(results))
 	for i, r := range results {
@@ -133,6 +144,11 @@ func (t *KDTree) RadiusSearch(q vec2.T, radius float64) ([]int, []float64) {
 		dists[i] = math.Sqrt(r.dist2)
 	}
 	return idxs, dists
+}
+
+type neighborEntry struct {
+	index int
+	dist2 float64
 }
 
 func (t *KDTree) radiusSearch(node *KDNode, q vec2.T, radius2 float64, depth int, results *[]neighborEntry) {
@@ -164,6 +180,13 @@ func (t *KDTree) radiusSearch(node *KDNode, q vec2.T, radius2 float64, depth int
 	}
 }
 
+func (t *KDTree) Points() []vec2.T {
+	var pts []vec2.T
+	var idxs []int
+	t.collectPoints(t.Root, &pts, &idxs)
+	return pts
+}
+
 func (t *KDTree) collectPoints(node *KDNode, pts *[]vec2.T, idxs *[]int) {
 	if node == nil {
 		return
@@ -172,11 +195,4 @@ func (t *KDTree) collectPoints(node *KDNode, pts *[]vec2.T, idxs *[]int) {
 	*idxs = append(*idxs, node.Index)
 	t.collectPoints(node.Left, pts, idxs)
 	t.collectPoints(node.Right, pts, idxs)
-}
-
-func (t *KDTree) Points() []vec2.T {
-	var pts []vec2.T
-	var idxs []int
-	t.collectPoints(t.Root, &pts, &idxs)
-	return pts
 }

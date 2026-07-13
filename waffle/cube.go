@@ -116,10 +116,9 @@ func (cw *cubeWaffle) Run(points []Point, opts *Options) (*Result, error) {
 
 			h := densityClusterHypotheses(depths, weights, sParams)
 
-			for _, neighborHyp := range cellHypotheses[max(0, y-thuCells)*width+max(0, x-thuCells)] {
-				if y+thuCells < height && x+thuCells < width {
-					_ = neighborHyp
-				}
+			neighborHyps := cellHypotheses[maxInt(0, y-thuCells)*width+maxInt(0, x-thuCells)]
+			if len(h) > 0 && len(neighborHyps) > 0 {
+				h = append(h, neighborHyps...)
 			}
 
 			if len(h) == 0 {

@@ -96,9 +96,6 @@ func init() {
 	Register(dem.MethodLinear, func() Waffle {
 		return &griddataWaffle{baseWaffle: baseWaffle{name: string(dem.MethodLinear)}, method: "linear"}
 	})
-	Register(dem.MethodCubic, func() Waffle {
-		return &griddataWaffle{baseWaffle: baseWaffle{name: string(dem.MethodCubic)}, method: "cubic"}
-	})
 	Register(dem.MethodNearest, func() Waffle {
 		return &griddataWaffle{baseWaffle: baseWaffle{name: string(dem.MethodNearest)}, method: "nearest"}
 	})
