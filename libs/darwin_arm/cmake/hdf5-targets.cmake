@@ -57,7 +57,7 @@ endif()
 add_library(hdf5-static STATIC IMPORTED)
 
 set_target_properties(hdf5-static PROPERTIES
-  INTERFACE_INCLUDE_DIRECTORIES "${_IMPORT_PREFIX}/include;${_IMPORT_PREFIX}/include"
+  INTERFACE_INCLUDE_DIRECTORIES "${_IMPORT_PREFIX}/include/hdf5"
 
 )
 
@@ -65,7 +65,7 @@ set_target_properties(hdf5-static PROPERTIES
 add_library(hdf5_hl-static STATIC IMPORTED)
 
 set_target_properties(hdf5_hl-static PROPERTIES
-  INTERFACE_INCLUDE_DIRECTORIES "${_IMPORT_PREFIX}/include;${_IMPORT_PREFIX}/include"
+  INTERFACE_INCLUDE_DIRECTORIES "${_IMPORT_PREFIX}/include/hdf5"
 
 )
 

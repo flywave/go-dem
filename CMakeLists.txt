@@ -56,23 +56,22 @@ ADD_SUBDIRECTORY("external/libgdal")
 ADD_SUBDIRECTORY("external/HTDP")
 
 #===============================================================================
-# HDF5 (simplified CMake — direct source build)
-#===============================================================================
-ADD_SUBDIRECTORY("external/hdf5")
-
-#===============================================================================
-# netCDF (links against hdf5 targets directly)
-#===============================================================================
-ADD_SUBDIRECTORY("external/netcdf")
-
-#===============================================================================
 # GMT (set variables so find_package finds our locally-built libs)
 #===============================================================================
+IF(APPLE)
+  SET(GDAL_ARCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/libgdal/arch/osx")
+ELSEIF(WIN32)
+  SET(GDAL_ARCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/libgdal/arch/win")
+ELSE()
+  SET(GDAL_ARCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/libgdal/arch/unix")
+ENDIF()
 SET(GDAL_INCLUDE_DIR
   "${CMAKE_CURRENT_SOURCE_DIR}/external/libgdal/gdal"
   "${CMAKE_CURRENT_SOURCE_DIR}/external/libgdal/gdal/gcore"
   "${CMAKE_CURRENT_SOURCE_DIR}/external/libgdal/gdal/port"
   "${CMAKE_CURRENT_SOURCE_DIR}/external/libgdal/gdal/alg"
+  "${CMAKE_CURRENT_SOURCE_DIR}/external/libgdal/gdal/ogr"
+  "${GDAL_ARCH_DIR}"
   "${CMAKE_CURRENT_SOURCE_DIR}/../../flywave-gdal/libs"
 )
 SET(GDAL_LIBRARY "${INSTALL_DIR}/libgdal_c.a")
@@ -81,9 +80,34 @@ SET(PROJ_LIBRARY "${INSTALL_DIR}/libproj.a")
 SET(HDF5_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/hdf5/src")
 SET(HDF5_LIBRARY "hdf5")
 SET(HDF5_HL_LIBRARY "hdf5_hl")
-SET(NETCDF_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/netcdf/include")
-SET(NETCDF_LIBRARY "netcdf")
-SET(NETCDF_LIBRARIES "netcdf")
+
+#===============================================================================
+# netCDF — imported target (pre-built lib in libs/)
+#===============================================================================
+# HDF5 imported targets (pre-built libs in libs/)
+add_library(HDF5::HDF5 STATIC IMPORTED GLOBAL)
+set_target_properties(HDF5::HDF5 PROPERTIES
+  IMPORTED_LOCATION "${INSTALL_DIR}/lib/libhdf5.a"
+  INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/external/hdf5/src;${INSTALL_DIR}/include/hdf5"
+  INTERFACE_LINK_LIBRARIES "ZLIB::ZLIB"
+)
+add_library(hdf5::hdf5_hl STATIC IMPORTED GLOBAL)
+set_target_properties(hdf5::hdf5_hl PROPERTIES
+  IMPORTED_LOCATION "${INSTALL_DIR}/lib/libhdf5_hl.a"
+  INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/external/hdf5/src;${INSTALL_DIR}/include/hdf5;${CMAKE_CURRENT_SOURCE_DIR}/external/hdf5/hl/src"
+  INTERFACE_LINK_LIBRARIES "HDF5::HDF5"
+)
+
+# netCDF imported target (pre-built lib in libs/)
+add_library(netcdf STATIC IMPORTED GLOBAL)
+set_target_properties(netcdf PROPERTIES
+  IMPORTED_LOCATION "${INSTALL_DIR}/lib/libnetcdf.a"
+  INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/external/netcdf/include"
+  INTERFACE_LINK_LIBRARIES "HDF5::HDF5;hdf5::hdf5_hl"
+)
+set(NETCDF_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/netcdf/include")
+set(NETCDF_LIBRARY "netcdf")
+set(NETCDF_LIBRARIES "netcdf")
 
 #===============================================================================
 # GMT — build as part of unified cmake

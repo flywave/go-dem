@@ -170,7 +170,7 @@ endif ()
 #-----------------------------------------------------------------------------
 # Directories
 #-----------------------------------------------------------------------------
-set (${HDF5_PACKAGE_NAME}_INCLUDE_DIR "${PACKAGE_PREFIX_DIR}/include" "${${HDF5_PACKAGE_NAME}_MPI_C_INCLUDE_DIRS}")
+set (${HDF5_PACKAGE_NAME}_INCLUDE_DIR "${PACKAGE_PREFIX_DIR}/include/hdf5" "${${HDF5_PACKAGE_NAME}_MPI_C_INCLUDE_DIRS}")
 
 set (${HDF5_PACKAGE_NAME}_SHARE_DIR "${PACKAGE_PREFIX_DIR}/cmake")
 set_and_check (${HDF5_PACKAGE_NAME}_BUILD_DIR "${PACKAGE_PREFIX_DIR}")
@@ -180,11 +180,11 @@ if (${HDF5_PACKAGE_NAME}_PROVIDES_CPP_LIB)
 endif ()
 
 if (${HDF5_PACKAGE_NAME}_PROVIDES_HL_LIB)
-  set (${HDF5_PACKAGE_NAME}_INCLUDE_DIR_HL "${PACKAGE_PREFIX_DIR}/include")
+  set (${HDF5_PACKAGE_NAME}_INCLUDE_DIR_HL "${PACKAGE_PREFIX_DIR}/include/hdf5")
 endif ()
 
 if (${HDF5_PACKAGE_NAME}_PROVIDES_HL_LIB AND ${HDF5_PACKAGE_NAME}_PROVIDES_CPP_LIB)
-  set (${HDF5_PACKAGE_NAME}_INCLUDE_DIR_HL_CPP "${PACKAGE_PREFIX_DIR}/include")
+  set (${HDF5_PACKAGE_NAME}_INCLUDE_DIR_HL_CPP "${PACKAGE_PREFIX_DIR}/include/hdf5")
 endif ()
 
 if (${HDF5_PACKAGE_NAME}_PROVIDES_TOOLS)
@@ -296,7 +296,7 @@ foreach (comp IN LISTS ${HDF5_PACKAGE_NAME}_FIND_COMPONENTS)
 
     if (${HDF5_PACKAGE_NAME}_PROVIDES_FORTRAN)
       if (${HDF5_PACKAGE_NAME}_INSTALL_MOD_FORTRAN STREQUAL "SHARED")
-        set (${HDF5_PACKAGE_NAME}_INCLUDE_DIR_FORTRAN "${PACKAGE_PREFIX_DIR}/include")
+        set (${HDF5_PACKAGE_NAME}_INCLUDE_DIR_FORTRAN "${PACKAGE_PREFIX_DIR}/include/hdf5")
       else ()
         set (${HDF5_PACKAGE_NAME}_INCLUDE_DIR_FORTRAN "${PACKAGE_PREFIX_DIR}/mod/shared")
       endif ()
@@ -307,7 +307,7 @@ foreach (comp IN LISTS ${HDF5_PACKAGE_NAME}_FIND_COMPONENTS)
 
     if (${HDF5_PACKAGE_NAME}_PROVIDES_FORTRAN)
       if (${HDF5_PACKAGE_NAME}_INSTALL_MOD_FORTRAN STREQUAL "STATIC")
-        set (${HDF5_PACKAGE_NAME}_INCLUDE_DIR_FORTRAN "${PACKAGE_PREFIX_DIR}/include")
+        set (${HDF5_PACKAGE_NAME}_INCLUDE_DIR_FORTRAN "${PACKAGE_PREFIX_DIR}/include/hdf5")
       else ()
         set (${HDF5_PACKAGE_NAME}_INCLUDE_DIR_FORTRAN "${PACKAGE_PREFIX_DIR}/mod/static")
       endif ()
