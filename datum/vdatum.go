@@ -7,65 +7,71 @@ import (
 	"github.com/flywave/go-dem"
 	"github.com/flywave/go-geo"
 	"github.com/flywave/go-geoid"
-	vec2d "github.com/flywave/go3d/float64/vec2"
+	"github.com/flywave/go3d/float64/vec2"
 )
 
 type VDatumGrid struct {
-	Data   []float64
-	Region *dem.Region
-	Model  geoid.VerticalDatum
+	Data      []float64
+	Uncertainty []float64
+	Region    *dem.Region
+	Model     geoid.VerticalDatum
+	SrcEpsg   int
+	DstEpsg   int
 }
 
-func GenerateVDatumGrid(region *dem.Region, model geoid.VerticalDatum, cubic bool) (*VDatumGrid, error) {
-	if model == geoid.HAE || model == geoid.UNKNOWN {
-		return nil, fmt.Errorf("invalid vertical datum model: %s", model.ToString())
-	}
-
-	g := geoid.NewGeoid(model, cubic)
-	if g == nil {
-		return nil, fmt.Errorf("failed to initialize geoid: %s", model.ToString())
-	}
-
-	size := region.XSize * region.YSize
-	data := make([]float64, size)
-	gt := region.GeoTransform()
-	w := region.XSize
-	h := region.YSize
-
-	var srs4326 geo.Proj
-	srs4326 = geo.NewProj("EPSG:4326")
-	needTransform := region.SRS() != nil && !region.SRS().Eq(srs4326) && !region.SRS().IsLatLong()
-
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			geoX := gt[0] + float64(x)*gt[1] + float64(y)*gt[2]
-			geoY := gt[3] + float64(x)*gt[4] + float64(y)*gt[5]
-
-			lon, lat := geoX, geoY
-			if needTransform {
-				pts := region.SRS().TransformTo(srs4326, []vec2d.T{{geoX, geoY}})
-				if len(pts) > 0 {
-					lon, lat = pts[0][0], pts[0][1]
-				}
-			}
-
-			undulation := g.GetHeight(lat, lon)
-			if math.IsNaN(undulation) || math.IsInf(undulation, 0) {
-				data[y*w+x] = 0
-			} else {
-				data[y*w+x] = undulation
-			}
-		}
+func GenerateTransformGrid(region *dem.Region, epsgIn, epsgOut int, model geoid.VerticalDatum) (*VDatumGrid, error) {
+	vt := NewVerticalTransform(TransformOptions{
+		EpsgIn:    epsgIn,
+		EpsgOut:   epsgOut,
+		Region:    region,
+	})
+	result, err := vt.Run()
+	if err != nil {
+		return nil, err
 	}
 
 	return &VDatumGrid{
-		Data:   data,
-		Region: region,
-		Model:  model,
+		Data:    result.Grid,
+		Uncertainty: result.Uncertainty,
+		Region:  region,
+		SrcEpsg: epsgIn,
+		DstEpsg: epsgOut,
 	}, nil
 }
 
-func (vg *VDatumGrid) ApplyToDEM(demData []float64, fromEllipsoidal bool) []float64 {
+func GenerateGeoidGrid(region *dem.Region, model geoid.VerticalDatum) (*VDatumGrid, error) {
+	data := computeGeoidGrid(region, model)
+	size := region.XSize * region.YSize
+
+	return &VDatumGrid{
+		Data:    data,
+		Uncertainty: make([]float64, size),
+		Region:  region,
+		Model:   model,
+	}, nil
+}
+
+func MultiStepTransform(region *dem.Region, epsgIn, epsgOut int) (*VDatumGrid, error) {
+	vt := NewVerticalTransform(TransformOptions{
+		EpsgIn:  epsgIn,
+		EpsgOut: epsgOut,
+		Region:  region,
+	})
+	result, err := vt.Run()
+	if err != nil {
+		return nil, err
+	}
+
+	return &VDatumGrid{
+		Data:    result.Grid,
+		Uncertainty: result.Uncertainty,
+		Region:  region,
+		SrcEpsg: epsgIn,
+		DstEpsg: epsgOut,
+	}, nil
+}
+
+func (vg *VDatumGrid) ApplyToDEM(demData []float64, inverse bool) []float64 {
 	result := make([]float64, len(demData))
 	noData := dem.DefaultNoData
 
@@ -74,10 +80,14 @@ func (vg *VDatumGrid) ApplyToDEM(demData []float64, fromEllipsoidal bool) []floa
 			result[i] = noData
 			continue
 		}
-		if fromEllipsoidal {
-			result[i] = demData[i] - vg.Data[i]
-		} else {
+		if i >= len(vg.Data) {
+			result[i] = demData[i]
+			continue
+		}
+		if inverse {
 			result[i] = demData[i] + vg.Data[i]
+		} else {
+			result[i] = demData[i] - vg.Data[i]
 		}
 	}
 
@@ -86,4 +96,83 @@ func (vg *VDatumGrid) ApplyToDEM(demData []float64, fromEllipsoidal bool) []floa
 
 func (vg *VDatumGrid) Write(path string) error {
 	return dem.CreateDEM(vg.Data, vg.Region, path, -9999)
+}
+
+func (vg *VDatumGrid) WriteUncertainty(path string) error {
+	return dem.CreateDEM(vg.Uncertainty, vg.Region, path, -9999)
+}
+
+func EPSGToVerticalDatum(epsg int) geoid.VerticalDatum {
+	switch epsg {
+	case 3855:
+		return geoid.EGM2008
+	case 5773:
+		return geoid.EGM96
+	case 5798:
+		return geoid.EGM84
+	case 5703, 6360, 8228:
+		return geoid.EGM96
+	default:
+		return geoid.HAE
+	}
+}
+
+func ResolveTransform(fromEPSG, toEPSG int, region *dem.Region) (*VDatumGrid, error) {
+	frameIn := GetFrameByEPSG(fromEPSG)
+	frameOut := GetFrameByEPSG(toEPSG)
+
+	if frameIn == nil || frameOut == nil {
+		return nil, fmt.Errorf("unsupported EPSG: %d -> %d", fromEPSG, toEPSG)
+	}
+
+	if frameIn.Type == frameOut.Type && frameIn.Type == FrameCDN {
+		model := EPSGToVerticalDatum(fromEPSG)
+		g := geoid.NewGeoid(model, true)
+		if g == nil {
+			return nil, fmt.Errorf("failed to initialize geoid for EPSG:%d", fromEPSG)
+		}
+
+		size := region.XSize * region.YSize
+		data := make([]float64, size)
+		noData := dem.DefaultNoData
+
+		var srs4326 geo.Proj = geo.NewProj("EPSG:4326")
+		needTransform := region.SRS() != nil && !region.SRS().Eq(srs4326)
+
+		for y := 0; y < region.YSize; y++ {
+			for x := 0; x < region.XSize; x++ {
+				geoX := region.BBox().Min[0] + float64(x)*region.XRes
+				geoY := region.BBox().Min[1] + float64(y)*region.YRes
+
+				lon, lat := geoX, geoY
+				if needTransform {
+					pts := region.SRS().TransformTo(srs4326, []vec2.T{{geoX, geoY}})
+					if len(pts) > 0 {
+						lon, lat = pts[0][0], pts[0][1]
+					}
+				}
+
+				und := g.GetHeight(lat, lon)
+				if math.IsNaN(und) || math.IsInf(und, 0) {
+					data[y*region.XSize+x] = noData
+				} else {
+					data[y*region.XSize+x] = und
+				}
+			}
+		}
+
+		return &VDatumGrid{
+			Data:    data,
+			Uncertainty: make([]float64, size),
+			Region:  region,
+			SrcEpsg: fromEPSG,
+			DstEpsg: toEPSG,
+		}, nil
+	}
+
+	return MultiStepTransform(region, fromEPSG, toEPSG)
+}
+
+func SupportedFrames() string {
+	return ListFrames()
 }
