@@ -133,6 +133,7 @@ func writeBand(ds gdal.Dataset, bandIdx int, data []float64, xSize, ySize int) e
 
 func CreateDEM(data []float64, region *Region, outputPath string, noData float64) error {
 	return CreateDEMWithConfig(data, region, outputPath, OutputConfig{NoData: noData})
+
 }
 
 func CreateDEMWithConfig(data []float64, region *Region, outputPath string, cfg OutputConfig) error {
