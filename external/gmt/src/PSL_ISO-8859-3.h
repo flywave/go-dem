@@ -1,0 +1,34 @@
+"/ISO-8859-3_Encoding [\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/space		/exclam		/quotedbl	/numbersign	/dollar		/percent	/ampersand	/quotesingle\n\
+/parenleft	/parenright	/asterisk	/plus		/comma		/hyphen		/period		/slash\n\
+/zero		/one		/two		/three		/four		/five		/six		/seven\n\
+/eight		/nine		/colon		/semicolon	/less		/equal		/greater	/question\n\
+/at		/A		/B		/C		/D		/E		/F		/G\n\
+/H		/I		/J		/K		/L		/M		/N		/O\n\
+/P		/Q		/R		/S		/T		/U		/V		/W\n\
+/X		/Y		/Z		/bracketleft	/backslash	/bracketright	/asciicircum	/underscore\n\
+/grave		/a		/b		/c		/d		/e		/f		/g\n\
+/h		/i		/j		/k		/l		/m		/n		/o\n\
+/p		/q		/r		/s		/t		/u		/v		/w\n\
+/x		/y		/z		/braceleft	/bar		/braceright	/asciitilde	/.notdef\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/uni00A0	/Hbar		/breve		/sterling	/currency	/.notdef	/Hcircumflex	/section\n\
+/dieresis	/Idotaccent	/Scedilla	/Gbreve		/Jcircumflex	/uni00AD	/.notdef	/Zdotaccent\n\
+/degree		/hbar		/twosuperior	/threesuperior	/acute		/mu		/hcircumflex	/periodcentered\n\
+/cedilla	/dotlessi	/scedilla	/gbreve		/jcircumflex	/onehalf	/.notdef	/zdotaccent\n\
+/Agrave		/Aacute		/Acircumflex	/.notdef	/Adieresis	/Cdotaccent	/Ccircumflex	/Ccedilla\n\
+/Egrave		/Eacute		/Ecircumflex	/Edieresis	/Igrave		/Iacute		/Icircumflex	/Idieresis\n\
+/.notdef	/Ntilde		/Ograve		/Oacute		/Ocircumflex	/Gdotaccent	/Odieresis	/multiply\n\
+/Gcircumflex	/Ugrave		/Uacute		/Ucircumflex	/Udieresis	/Ubreve		/Scircumflex	/germandbls\n\
+/agrave		/aacute		/acircumflex	/.notdef	/adieresis	/cdotaccent	/ccircumflex	/ccedilla\n\
+/egrave		/eacute		/ecircumflex	/edieresis	/igrave		/iacute		/icircumflex	/idieresis\n\
+/.notdef	/ntilde		/ograve		/oacute		/ocircumflex	/gdotaccent	/odieresis	/divide\n\
+/gcircumflex	/ugrave		/uacute		/ucircumflex	/udieresis	/ubreve		/scircumflex	/dotaccent\n\
+] def\n",

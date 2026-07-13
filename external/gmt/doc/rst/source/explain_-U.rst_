@@ -1,0 +1,30 @@
+The **-U** option
+^^^^^^^^^^^^^^^^^
+
+**Syntax**
+
+.. _-U:
+
+**-U**\ [*label*\|\ **+c**][**+j**\ *justify*][**+o**\ *dx*\ [/*dy*]][**+t**\ *text*]
+    Draw GMT time stamp logo on the plot. |Add_-U|
+
+**Description**
+
+The **-U** option draws the GMT system time stamp on the plot. You may provide on optional
+*label* text string written to the right side of the time stamp (and must be surrounded by
+double quotes if it contains spaces).
+
+Several modifiers  are supported:
+
+- **+c** - Plot the current command string.
+- **+j** - Append the justification of the time stamp, where *justify* is a two-character
+  :ref:`justification code <Reference_Points>` that is a combination of a horizontal (**L**\ (eft), **C**\ (enter), or
+  **R**\ (ight)) and a vertical (**T**\ (op), **M**\ (iddle), or **B**\ (ottom)) code [default is **BL**].
+- **+o** - Give *dx*\ [/*dy*] to offset the :ref:`anchor point <Anchor_Point_o>` for the time stamp by *dx* and optionally
+  *dy* (if different than *dx*).
+- **+t** - Replace the UNIX time stamp with a custom *text* instead (< 64 characters). Place multi-word
+  *text* in quotes and let **+t** be the last modifier used.
+
+The GMT parameters :term:`MAP_LOGO`, :term:`MAP_LOGO_POS`, :term:`FONT_LOGO` and :term:`FORMAT_TIME_STAMP` can affect
+the appearance; see the :doc:`/gmt.conf` man page for details. The time string will be in the locale set by the
+environment variable **TZ** (generally local time).

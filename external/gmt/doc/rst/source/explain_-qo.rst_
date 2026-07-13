@@ -1,0 +1,2 @@
+**-qo**\ [~]\ *rows*\|\ *limits*\ [**+c**\ *col*][**+a**\|\ **t**\|\ **s**] :ref:`(more ...) <-qo_full>`
+    Select output rows or data limit(s) [default is all rows].

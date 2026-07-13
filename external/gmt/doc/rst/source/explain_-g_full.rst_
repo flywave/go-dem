@@ -1,0 +1,44 @@
+The **-g** option
+^^^^^^^^^^^^^^^^^
+
+**Syntax**
+
+**-g**\ **x**\|\ **y**\|\ **z**\|\ **d**\|\ **X**\|\ **Y**\|\ **D**\ *gap*\ [**u**][**+a**][**+c**\ *col*][**+n**\|\ **p**]
+    Examine the spacing between consecutive data points in order to impose breaks in the line.
+
+**Description**
+
+The **-g** option is used to detect gaps based on one or more criteria. Repeat the option to specify multiple criteria.
+A criterion is specified using one of the **x**\|\ **y**\|\ **z**\|\ **d**\|\ **X**\|\ **Y**\|\ **D** directives. The
+upper-case directives specify that the criterion should be applied to the projected coordinates for
+modules that map data to map coordinates.
+
+- **x**\|\ **X** - Define a gap when there is a large enough change in the x coordinates (upper case to use
+  projected coordinates).
+- **y**\|\ **Y** - Define a gap when there is a large enough change in the y coordinates (upper case to use
+  projected coordinates).
+- **z** - Define a gap when there is a large enough change in the z data. Use **+c**\ *col* to change
+  the z data column [Default *col* is 2 (i.e., 3rd column)].
+- **d**\|\ **D** - Define a gap when there is a large enough distance between coordinates (upper case to use
+  projected coordinates).
+
+A unit **u** may be appended to the specified *gap*:
+
+- For geographic data (**x**\|\ **y**\|\ **d**), the unit may be arc **d**\ (egree), **m**\ (inute), and **s**\ (econd),
+  or (m)\ **e**\ (ter), **f**\ (eet), **k**\ (ilometer), **M**\ (iles), or **n**\ (autical miles) [Default is
+  (m)\ **e**\ (ter)].
+- For projected data (**X**\|\ **Y**\|\ **D**), the unit may be **i**\ (nch), **c**\ (entimeter), or **p**\ (oint)
+  [Default unit is set by :term:`PROJ_LENGTH_UNIT`].
+
+Append modifier **+a** to specify that *all* the criteria must be met [default imposes breaks if any one criterion is met].
+
+One of the following modifiers can be appended:
+
+- **+n** - Specify that the previous value minus the current value must exceed *gap* for a break to be imposed.
+- **+p** - Specify that the current value minus the previous value must exceed *gap* for a break to be imposed.
+
+Default imposes breaks based on the absolute value of the difference between the current and previous value.
+**Notes**: (1) For **x**\|\ **y**\|\ **z** with time data the unit is instead controlled by :term:`TIME_UNIT`. (2) GMT
+has other mechanisms that can determine line segmentation, including segments defined by multiple segment header
+records (see the cookbook chapter :doc:`/reference/file-formats`) or segments defined by NaN values when
+:term:`IO_NAN_RECORDS` is set to *pass* [default skips NaN values].

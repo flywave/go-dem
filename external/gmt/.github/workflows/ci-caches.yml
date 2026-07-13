@@ -1,0 +1,190 @@
+#
+# Create CI caches for:
+#
+# 1. GMT remote data for building documentation and running tests
+# 2. GMT GSHHG and DCW datasets
+# 3. vcpkg libraries on Windows
+# 4. DVC-tracked baseline images for tests and docs
+#
+name: GMT CI Caches
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'test/baseline/*.dvc'
+      - 'doc/examples/images/*.dvc'
+      - 'doc/scripts/images/*.dvc'
+      - '.github/workflows/ci-caches.yml'
+  pull_request:
+    # Make any changes to the following files to refresh the cache in PRs
+    paths:
+      - '.github/workflows/ci-caches.yml'
+  workflow_dispatch:
+  # Schedule runs on 12 noon every Sunday
+  schedule:
+    - cron: '0 12 * * 0'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+jobs:
+  data_cache:
+    name: Cache GMT data
+    runs-on: macos-latest
+    if: github.event_name != 'push'
+    defaults:
+      run:
+        shell: bash -l {0}
+
+    steps:
+      - name: Install GMT
+        uses: mamba-org/setup-micromamba@v3.0.0
+        with:
+          environment-name: gmt
+          condarc: |
+            channels:
+              - conda-forge
+              - nodefaults
+          create-args: >-
+            gmt=6.5.0
+
+      - name: Download remote data
+        run: |
+          # list of datasets used in tests
+          data="@earth_relief_01d_p \
+                @earth_relief_01d_g \
+                @earth_relief_30m_p \
+                @earth_relief_20m_p \
+                @earth_relief_15m_p \
+                @earth_relief_10m_p \
+                @earth_relief_06m_p \
+                @earth_relief_05m_p \
+                @earth_relief_05m_g \
+                @earth_relief_04m_p \
+                @N30E000.earth_relief_02m_p.nc \
+                @N30W060.earth_relief_02m_p.nc \
+                @N30W120.earth_relief_02m_p.nc \
+                @N30W180.earth_relief_02m_p.nc \
+                @S30E000.earth_relief_02m_p.nc \
+                @S30W060.earth_relief_02m_p.nc \
+                @S30W180.earth_relief_02m_p.nc \
+                @S30W060.earth_relief_02m_g.nc \
+                @N00E000.earth_relief_01m_p.nc \
+                @N00W180.earth_relief_01m_p.nc \
+                @S30W060.earth_relief_01m_p.nc \
+                @S60W120.earth_relief_01m_g.nc \
+                @N30W105.earth_relief_30s_p.nc \
+                @N30W120.earth_relief_30s_p.nc \
+                @N45E000.earth_relief_30s_p.nc \
+                @N40E000.earth_relief_15s_p.nc \
+                @N44E003.earth_relief_03s_g.nc \
+                @N44E004.earth_relief_03s_g.nc \
+                @earth_age_10m_p \
+                @earth_age_06m_p \
+                @S30W180.earth_age_02m_p.nc \
+                @earth_day_20m_p \
+                @earth_day_15m_p \
+                @earth_day_01m_p \
+                @earth_day_01d_p \
+                @earth_night_20m_p \
+                @earth_mask_30s_p"
+          # Use the static server
+          export GMT_DATA_SERVER=static
+          # Download remote data multiple times to make sure all are downloaded
+          gmt which -Ga $data
+          gmt which -Ga $data
+          gmt which -Ga $data
+          # Download cache files multiple times to make sure all are downloaded
+          # Workaroud for https://github.com/GenericMappingTools/gmt/issues/8437.
+          mv ~/.gmt/gmt_data_server.txt ~/.gmt/server/
+          mv ~/.gmt/gmt_hash_server.txt ~/.gmt/server/
+          gmt get -Dcache
+          gmt get -Dcache
+          gmt get -Dcache
+          # Workaroud for https://github.com/GenericMappingTools/gmt/issues/8437.
+          mkdir ~/.gmt/static/
+          mv ~/.gmt/server ~/.gmt/static/
+          mv ~/.gmt/cache ~/.gmt/static/
+          # check files
+          ls -lR ~/.gmt
+
+      # Upload the downloaded files as artifacts to GitHub
+      - name: Upload artifacts to GitHub
+        uses: actions/upload-artifact@v7
+        with:
+          name: gmt-cache
+          path: ~/.gmt/static
+
+  coastline_cache:
+    name: Cache GSHHG and DCW datasets
+    runs-on: ubuntu-latest
+    if: github.event_name != 'push'
+    env:
+      COASTLINEDIR: ${{ github.workspace }}/coastline
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Download GSHHG and DCW datasets
+        run: bash ci/download-coastlines.sh
+        env:
+          COASTLINEDIR: ${{ env.COASTLINEDIR }}
+
+      - name: Upload artifacts to GitHub
+        uses: actions/upload-artifact@v7
+        with:
+          name: coastline-cache
+          path: ${{ env.COASTLINEDIR }}
+
+  vcpkg_cache:
+    name: Cache vcpkg libraries
+    runs-on: windows-latest
+    if: github.event_name != 'push'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Install vcpkg libraries
+        run: bash ci/install-dependencies-windows.sh
+
+      - name: Upload artifacts to GitHub
+        uses: actions/upload-artifact@v7
+        with:
+          name: vcpkg-cache
+          # VCPKG_INSTALLATION_ROOT is C:\vcpkg
+          path: C:\vcpkg\installed\
+
+  dvc_cache:
+    name: Cache DVC baseline images
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -l {0}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup data version control (DVC)
+        uses: iterative/setup-dvc@v2
+
+      - name: Pull baseline image data from dvc remote
+        env:
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+        run: |
+          dvc remote modify origin url https://${DAGSHUB_TOKEN}@dagshub.com/GenericMappingTools/gmt.dvc --local
+          dvc pull --remote origin --no-run-cache --verbose
+
+      - name: Upload DVC cache as artifacts to GitHub
+        uses: actions/upload-artifact@v7
+        with:
+          name: dvc-cache
+          include-hidden-files: true
+          path: .dvc/cache/

@@ -1,0 +1,87 @@
+/*--------------------------------------------------------------------
+ *
+ *  Copyright (c) 1991-2026 by the GMT Team (https://www.generic-mapping-tools.org/team.html)
+ *  See LICENSE.TXT file for copying and redistribution conditions.
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU Lesser General Public License as published by
+ *  the Free Software Foundation; version 3 or any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU Lesser General Public License for more details.
+ *
+ *  Contact info: www.generic-mapping-tools.org
+ *--------------------------------------------------------------------*/
+
+#pragma once
+#ifndef _CONFIG_H
+#define _CONFIG_H
+
+/* configured options and settings for GMT */
+#define GMT_PACKAGE_VERSION_MAJOR @GMT_PACKAGE_VERSION_MAJOR@
+#define GMT_PACKAGE_VERSION_MINOR @GMT_PACKAGE_VERSION_MINOR@
+#define GMT_PACKAGE_VERSION_PATCH @GMT_PACKAGE_VERSION_PATCH@
+
+#define GMT_PACKAGE_VERSION "@GMT_PACKAGE_VERSION@"
+#define GMT_PACKAGE_VERSION_WITH_GIT_REVISION "@GMT_PACKAGE_VERSION_WITH_GIT_REVISION@"
+#define GMT_BUILD_DATE "@GMT_BUILD_DATE@"
+
+/* URL to the docs on the GMT web server */
+#define GMT_DOC_URL "@GMT_DOC_URL@"
+
+/* path to executables/libs */
+#define GMT_BINDIR_RELATIVE "@GMT_BINDIR@"
+#ifndef WIN32
+    #define GMT_LIBDIR_RELATIVE "@GMT_LIBDIR@"
+#else
+    #define GMT_LIBDIR_RELATIVE "@GMT_BINDIR@"
+#endif
+
+/* path to shared files */
+#define GMT_SHARE_DIR "@CMAKE_INSTALL_PREFIX@/@GMT_DATADIR@"
+#define GMT_SHARE_DIR_RELATIVE "@GMT_DATADIR@"
+
+/* URL to remote files */
+#define GMT_DATA_SERVER "@GMT_DATA_SERVER@"
+
+/* for running and debugging in ${GMT_BINARY_DIR} */
+#cmakedefine SUPPORT_EXEC_IN_BINARY_DIR
+#define GMT_SHARE_DIR_DEBUG "@GMT_SOURCE_DIR@/share"
+#define GMT_USER_DIR_DEBUG "@GMT_BINARY_DIR@/share"
+#define GMT_BINARY_DIR_SRC_DEBUG "@GMT_BINARY_DIR@/src"
+
+/* path to documentation */
+#define GMT_DOC_DIR "@CMAKE_INSTALL_PREFIX@/@GMT_DOCDIR@"
+
+/* min required GSHHG version and its netCDF extension */
+#define GSHHG_MIN_REQUIRED_VERSION {@GSHHG_MIN_REQUIRED_VERSION_MAJOR@, @GSHHG_MIN_REQUIRED_VERSION_MINOR@, @GSHHG_MIN_REQUIRED_VERSION_PATCH@}
+
+/* Name of core library */
+#define GMT_CORE_LIB_NAME "@GMT_CORE_LIB_NAME@"
+
+/* Name of gs executable */
+#define GMT_GS_EXECUTABLE "@GMT_GS_EXECUTABLE@"
+
+/* Name of supplemental library */
+#define GMT_SUPPL_LIBRARY "@GMT_SUPPL_LIBRARY@"
+
+/* Name of PSL library */
+#define PSL_LIB_NAME "@PSL_LIB_NAME@"
+
+/* Name of DCW path */
+#define DCW_INSTALL_PATH "@DCW_PATH@"
+
+/* Name of GSHHG path */
+#define GSHHG_INSTALL_PATH "@GSHHG_PATH@"
+
+/* Default units (SI vs US) */
+#define GMT_DEF_UNITS "@UNITS@"
+
+/* Suffix of gmt executable, include dir, data dir, and plugin dir */
+#define GMT_INSTALL_NAME_SUFFIX "@GMT_INSTALL_NAME_SUFFIX@"
+
+#endif /* !_CONFIG_H */
+
+/* vim: set ft=c: */

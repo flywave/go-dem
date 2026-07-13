@@ -1,0 +1,2 @@
+**-bo**\ *record*\ [**+b**\|\ **l**] :ref:`(more ...) <-bo_full>`
+    Select native binary format for table output. |Add_-bo|

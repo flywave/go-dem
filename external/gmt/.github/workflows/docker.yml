@@ -1,0 +1,122 @@
+#
+# Build GMT source codes on different Linux distros using dockers.
+#
+# This workflow is triggered by push or pull request events.
+#
+name: Docker
+
+on:
+  push:
+    branches:
+      - master
+      - 6.[0-9]+
+    paths:
+      - 'ci/**'
+      - 'cmake/**'
+      - 'src/**'
+      - '**/CMakeLists.txt'
+      - '.github/workflows/docker.yml'
+  pull_request:
+    paths:
+      - 'ci/**'
+      - 'cmake/**'
+      - 'src/**'
+      - '**/CMakeLists.txt'
+      - '.github/workflows/docker.yml'
+
+defaults:
+  run:
+    # default to use bash shell
+    shell: bash
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+jobs:
+  docker:
+    name: ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ matrix.image }}
+
+    env:
+      # directories
+      COASTLINEDIR: ${{ github.workspace }}/coastline
+      INSTALLDIR: ${{ github.workspace }}/gmt-install-dir
+      # disable auto-display of GMT plots
+      GMT_END_SHOW: off
+      # Compile only
+      BUILD_DOCS  : false
+      PACKAGE     : false
+      RUN_TESTS   : false
+
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          # Test the oldest and latest Ubuntu LTS releases and also unstable Debian/Fedora
+          # Ubuntu: https://en.wikipedia.org/wiki/Ubuntu_version_history#Table_of_versions
+          - ubuntu:20.04    # CMake 3.16.3 + GNU 9.3.0;  EOL: 2025-05-29
+          - ubuntu:24.04    # CMake 3.28.3 + GNU 13.2.0; EOL: 2029-05-31
+          - debian:sid      # rolling release with latest versions
+          - fedora:rawhide  # rolling release with latest versions
+
+    steps:
+      - name: Install GMT dependencies
+        run: |
+          os=$(grep -E "^ID=" /etc/os-release | cut -d= -f2)
+          if [[ "$os" = "ubuntu" || "$os" = "debian" ]]; then
+            apt-get update
+            DEBIAN_FRONTEND="noninteractive" TZ="America/New_York" apt-get install -y tzdata
+            apt-get install -y --no-install-recommends --no-install-suggests \
+                 build-essential cmake ninja-build \
+                 libcurl4-gnutls-dev libnetcdf-dev libgdal-dev \
+                 libfftw3-dev libpcre2-dev liblapack-dev libglib2.0-dev \
+                 ghostscript curl git
+            apt reinstall -y ca-certificates
+            update-ca-certificates
+            # Install gh from binary deb package
+            curl -LO https://github.com/cli/cli/releases/download/v2.49.0/gh_2.49.0_linux_amd64.deb
+            apt install ./gh_2.49.0_linux_amd64.deb
+          elif [[ "$os" = "fedora" ]]; then
+            dnf install -y \
+                cmake ninja-build \
+                libcurl-devel netcdf-devel gdal-devel gdal \
+                fftw3-devel pcre2-devel lapack-devel openblas-devel glib2-devel \
+                ghostscript openssl gh
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      # Fix the git error:
+      # "failed to run git: fatal: detected dubious ownership in repository at '/__w/gmt/gmt'"
+      - name: Fixup git
+        run: git config --global --add safe.directory $GITHUB_WORKSPACE
+
+      - name: Download GSHHG and DCW data
+        run: gh run download -n coastline-cache -D coastline
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Configure GMT
+        run: bash ci/config-gmt-unix.sh
+
+      - name: Compile and install GMT
+        run: |
+          mkdir build
+          cd build
+          cmake -G Ninja ..
+          cmake --build .
+          cmake --build . --target install
+          # Add GMT PATH to bin
+          echo "${INSTALLDIR}/bin" >> $GITHUB_PATH
+
+      - name: Download cached GMT remote data from GitHub Artifacts
+        run: gh run download -n gmt-cache -D ~/.gmt/static/
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Check a few simple commands
+        run: bash ci/simple-gmt-tests.sh

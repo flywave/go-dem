@@ -1,0 +1,5 @@
+outs:
+- md5: 29e78028799ee60a1c27fa8d2d53fb83.dir
+  nfiles: 12
+  path: grdview
+  hash: md5

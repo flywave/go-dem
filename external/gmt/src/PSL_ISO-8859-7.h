@@ -1,0 +1,34 @@
+"/ISO-8859-7_Encoding [\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/space		/exclam		/quotedbl	/numbersign	/dollar		/percent	/ampersand	/quotesingle\n\
+/parenleft	/parenright	/asterisk	/plus		/comma		/hyphen		/period		/slash\n\
+/zero		/one		/two		/three		/four		/five		/six		/seven\n\
+/eight		/nine		/colon		/semicolon	/less		/equal		/greater	/question\n\
+/at		/A		/B		/C		/D		/E		/F		/G\n\
+/H		/I		/J		/K		/L		/M		/N		/O\n\
+/P		/Q		/R		/S		/T		/U		/V		/W\n\
+/X		/Y		/Z		/bracketleft	/backslash	/bracketright	/asciicircum	/underscore\n\
+/grave		/a		/b		/c		/d		/e		/f		/g\n\
+/h		/i		/j		/k		/l		/m		/n		/o\n\
+/p		/q		/r		/s		/t		/u		/v		/w\n\
+/x		/y		/z		/braceleft	/bar		/braceright	/asciitilde	/.notdef\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/uni00A0	/quoteleft	/quoteright	/sterling	/Euro		/uni20AF	/brokenbar	/section\n\
+/dieresis	/copyright	/uni037A	/guillemotleft	/logicalnot	/uni00AD	/.notdef	/afii00208\n\
+/degree		/plusminus	/twosuperior	/threesuperior	/tonos		/dieresistonos	/Alphatonos	/periodcentered\n\
+/Epsilontonos	/Etatonos	/Iotatonos	/guillemotright	/Omicrontonos	/onehalf	/Upsilontonos	/Omegatonos\n\
+/iotadieresistonos	/Alpha		/Beta		/Gamma		/uni0394	/Epsilon	/Zeta		/Eta\n\
+/Theta		/Iota		/Kappa		/Lambda		/Mu		/Nu		/Xi		/Omicron\n\
+/Pi		/Rho		/.notdef	/Sigma		/Tau		/Upsilon	/Phi		/Chi\n\
+/Psi		/uni03A9	/Iotadieresis	/Upsilondieresis	/alphatonos	/epsilontonos	/etatonos	/iotatonos\n\
+/upsilondieresistonos	/alpha		/beta		/gamma		/delta		/epsilon	/zeta		/eta\n\
+/theta		/iota		/kappa		/lambda		/uni03BC	/nu		/xi		/omicron\n\
+/pi		/rho		/uni03C2	/sigma		/tau		/upsilon	/phi		/chi\n\
+/psi		/omega		/iotadieresis	/upsilondieresis	/omicrontonos	/upsilontonos	/omegatonos	/.notdef\n\
+] def\n",

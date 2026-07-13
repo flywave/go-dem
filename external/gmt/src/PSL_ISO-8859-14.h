@@ -1,0 +1,34 @@
+"/ISO-8859-14_Encoding [\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/space		/exclam		/quotedbl	/numbersign	/dollar		/percent	/ampersand	/quotesingle\n\
+/parenleft	/parenright	/asterisk	/plus		/comma		/hyphen		/period		/slash\n\
+/zero		/one		/two		/three		/four		/five		/six		/seven\n\
+/eight		/nine		/colon		/semicolon	/less		/equal		/greater	/question\n\
+/at		/A		/B		/C		/D		/E		/F		/G\n\
+/H		/I		/J		/K		/L		/M		/N		/O\n\
+/P		/Q		/R		/S		/T		/U		/V		/W\n\
+/X		/Y		/Z		/bracketleft	/backslash	/bracketright	/asciicircum	/underscore\n\
+/grave		/a		/b		/c		/d		/e		/f		/g\n\
+/h		/i		/j		/k		/l		/m		/n		/o\n\
+/p		/q		/r		/s		/t		/u		/v		/w\n\
+/x		/y		/z		/braceleft	/bar		/braceright	/asciitilde	/.notdef\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef	/.notdef\n\
+/uni00A0	/uni1E02	/uni1E03	/sterling	/Cdotaccent	/cdotaccent	/uni1E0A	/section\n\
+/Wgrave		/copyright	/Wacute		/uni1E0B	/Ygrave		/uni00AD	/registered	/Ydieresis\n\
+/uni1E1E	/uni1E1F	/Gdotaccent	/gdotaccent	/uni1E40	/uni1E41	/paragraph	/uni1E56\n\
+/wgrave		/uni1E57	/wacute		/uni1E60	/ygrave		/Wdieresis	/wdieresis	/uni1E61\n\
+/Agrave		/Aacute		/Acircumflex	/Atilde		/Adieresis	/Aring		/AE		/Ccedilla\n\
+/Egrave		/Eacute		/Ecircumflex	/Edieresis	/Igrave		/Iacute		/Icircumflex	/Idieresis\n\
+/Wcircumflex	/Ntilde		/Ograve		/Oacute		/Ocircumflex	/Otilde		/Odieresis	/uni1E6A\n\
+/Oslash		/Ugrave		/Uacute		/Ucircumflex	/Udieresis	/Yacute		/Ycircumflex	/germandbls\n\
+/agrave		/aacute		/acircumflex	/atilde		/adieresis	/aring		/ae		/ccedilla\n\
+/egrave		/eacute		/ecircumflex	/edieresis	/igrave		/iacute		/icircumflex	/idieresis\n\
+/wcircumflex	/ntilde		/ograve		/oacute		/ocircumflex	/otilde		/odieresis	/uni1E6B\n\
+/oslash		/ugrave		/uacute		/ucircumflex	/udieresis	/yacute		/ycircumflex	/ydieresis\n\
+] def\n",
