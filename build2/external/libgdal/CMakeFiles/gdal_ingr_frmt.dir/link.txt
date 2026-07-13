@@ -1,0 +1,2 @@
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_ingr_frmt.a CMakeFiles/gdal_ingr_frmt.dir/gdal/frmts/ingr/IngrTypes.cpp.o CMakeFiles/gdal_ingr_frmt.dir/gdal/frmts/ingr/IntergraphBand.cpp.o CMakeFiles/gdal_ingr_frmt.dir/gdal/frmts/ingr/IntergraphDataset.cpp.o CMakeFiles/gdal_ingr_frmt.dir/gdal/frmts/ingr/JpegHelper.cpp.o
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_ingr_frmt.a

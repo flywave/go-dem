@@ -1,0 +1,2 @@
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libgdal_envisat_frmt.a CMakeFiles/gdal_envisat_frmt.dir/gdal/frmts/envisat/adsrange.cpp.o CMakeFiles/gdal_envisat_frmt.dir/gdal/frmts/envisat/envisatdataset.cpp.o CMakeFiles/gdal_envisat_frmt.dir/gdal/frmts/envisat/EnvisatFile.c.o CMakeFiles/gdal_envisat_frmt.dir/gdal/frmts/envisat/records.c.o CMakeFiles/gdal_envisat_frmt.dir/gdal/frmts/envisat/unwrapgcps.cpp.o
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libgdal_envisat_frmt.a
