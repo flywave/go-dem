@@ -42,7 +42,7 @@ func Surface(inputPath, outputPath string, cfg *GridConfig) error {
 	cOut := C.CString(outputPath)
 	defer C.free(unsafe.Pointer(cIn))
 	defer C.free(unsafe.Pointer(cOut))
-	ret := C.gmt_surface(cIn, cOut,
+	ret := C.go_gmt_surface(cIn, cOut,
 		C.double(cfg.Tension),
 		C.double(cfg.XInc), C.double(cfg.YInc),
 		C.double(cfg.XMin), C.double(cfg.XMax),
@@ -62,7 +62,7 @@ func Grdfilter(inputPath, outputPath, filterType, distFlag string) error {
 	defer C.free(unsafe.Pointer(cOut))
 	defer C.free(unsafe.Pointer(cFilt))
 	defer C.free(unsafe.Pointer(cDist))
-	ret := C.gmt_grdfilter(cIn, cOut, cFilt, cDist)
+	ret := C.go_gmt_grdfilter(cIn, cOut, cFilt, cDist)
 	if ret != 0 {
 		return fmt.Errorf("gmt grdfilter failed with code %d", int(ret))
 	}
@@ -74,7 +74,7 @@ func Triangulate(inputPath, outputPath string, cfg *GridConfig) error {
 	cOut := C.CString(outputPath)
 	defer C.free(unsafe.Pointer(cIn))
 	defer C.free(unsafe.Pointer(cOut))
-	ret := C.gmt_triangulate(cIn, cOut,
+	ret := C.go_gmt_triangulate(cIn, cOut,
 		C.double(cfg.XInc), C.double(cfg.YInc),
 		C.double(cfg.XMin), C.double(cfg.XMax),
 		C.double(cfg.YMin), C.double(cfg.YMax))
@@ -89,7 +89,7 @@ func Blockmean(inputPath, outputPath string, cfg *GridConfig) error {
 	cOut := C.CString(outputPath)
 	defer C.free(unsafe.Pointer(cIn))
 	defer C.free(unsafe.Pointer(cOut))
-	ret := C.gmt_blockmean(cIn, cOut,
+	ret := C.go_gmt_blockmean(cIn, cOut,
 		C.double(cfg.XInc), C.double(cfg.YInc),
 		C.double(cfg.XMin), C.double(cfg.XMax),
 		C.double(cfg.YMin), C.double(cfg.YMax))
@@ -111,7 +111,7 @@ func Nearneighbor(inputPath, outputPath string, cfg *GridConfig) error {
 	if cfg.EmptyValue == 0 {
 		cfg.EmptyValue = -9999
 	}
-	ret := C.gmt_nearneighbor(cIn, cOut,
+	ret := C.go_gmt_nearneighbor(cIn, cOut,
 		C.double(cfg.XInc), C.double(cfg.YInc),
 		C.double(cfg.XMin), C.double(cfg.XMax),
 		C.double(cfg.YMin), C.double(cfg.YMax),

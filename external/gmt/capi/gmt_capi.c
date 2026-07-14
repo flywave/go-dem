@@ -42,7 +42,7 @@ static int call_module(const char *name, const char *cmd) {
     return GMT_Call_Module(g_api, name, 0, (void*)cmd);
 }
 
-int gmt_surface(const char *in, const char *out,
+int go_gmt_surface(const char *in, const char *out,
                 double tension, double xinc, double yinc,
                 double xmin, double xmax, double ymin, double ymax) {
     char cmd[2048];
@@ -52,14 +52,14 @@ int gmt_surface(const char *in, const char *out,
     return call_module("surface", cmd);
 }
 
-int gmt_grdfilter(const char *in, const char *out,
+int go_gmt_grdfilter(const char *in, const char *out,
                   const char *filter_type, const char *dist_flag) {
     char cmd[2048];
     snprintf(cmd, sizeof(cmd), "-G%s -F%s -D%s %s", out, filter_type, dist_flag, in);
     return call_module("grdfilter", cmd);
 }
 
-int gmt_triangulate(const char *in, const char *out,
+int go_gmt_triangulate(const char *in, const char *out,
                     double xinc, double yinc,
                     double xmin, double xmax, double ymin, double ymax) {
     char cmd[2048];
@@ -69,7 +69,7 @@ int gmt_triangulate(const char *in, const char *out,
     return call_module("triangulate", cmd);
 }
 
-int gmt_blockmean(const char *in, const char *out,
+int go_gmt_blockmean(const char *in, const char *out,
                   double xinc, double yinc,
                   double xmin, double xmax, double ymin, double ymax) {
     char cmd[2048];
@@ -79,7 +79,7 @@ int gmt_blockmean(const char *in, const char *out,
     return call_module("blockmean", cmd);
 }
 
-int gmt_nearneighbor(const char *in, const char *out,
+int go_gmt_nearneighbor(const char *in, const char *out,
                      double xinc, double yinc,
                      double xmin, double xmax, double ymin, double ymax,
                      double search_radius, int empty_value) {

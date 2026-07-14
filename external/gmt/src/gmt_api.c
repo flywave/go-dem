@@ -937,7 +937,8 @@ GMT_LOCAL int gmtapi_check_for_modern_oneliner (struct GMTAPI_CTRL *API, const c
 	/* Guard: if GMT control struct isn't fully initialized, skip modern mode check */
 	if (API == NULL || API->GMT == NULL) return GMT_NOERROR;
 
-	/* Prime malloc/strdup to avoid dyld TLS crash on first allocation from C */
+	/* Prime malloc/calloc to avoid dyld crash on first allocation from C */
+	{ void *volatile _p = calloc(1, 64); free(_p); }
 	{ void *volatile _p = malloc(64); free(_p); }
 
 	head = GMT_Create_Options (API, mode, args);	/* Get option list */
@@ -12929,42 +12930,17 @@ int GMT_Call_Module_ (const char *module, int *mode, void *args, int *length) {
 
 /*! . */
 GMT_LOCAL const char *gmtapi_get_shared_module_keys (struct GMTAPI_CTRL *API, char *module, unsigned int lib_no) {
-	/* Function that returns a pointer to the module keys in specified shared library lib_no, or NULL if not found  */
-	/* DO not rename this function */
-	char function[GMT_LEN64] = {""};
-	const char *keys = NULL;       /* char pointer to module keys */
-	const char *(*func)(void*, char*) = NULL;       /* function pointer */
-	if (API->lib[lib_no].skip) return (NULL);	/* Tried to open this shared library before and it was not available */
-	if (API->lib[lib_no].handle == NULL && (API->lib[lib_no].handle = dlopen (API->lib[lib_no].path, RTLD_LAZY)) == NULL) {	/* Not opened this shared library yet */
-		GMT_Report (API, GMT_MSG_ERROR, "Unable to open GMT shared %s library: %s\n", API->lib[lib_no].name, dlerror());
-		API->lib[lib_no].skip = true;	/* Not bother the next time... */
-		return (NULL);			/* ...and obviously no keys would be found */
-	}
-	snprintf (function, GMT_LEN64, "%s_module_keys", API->lib[lib_no].name);
-	/* Here the library handle is available; try to get pointer to specified module */
-	*(void **) (&func) = dlsym (API->lib[lib_no].handle, function);
-	if (func) keys = (*func) (API, module);
-	return (keys);
+	/* Static build: skip dlopen/dlsym entirely. Keys are provided via the
+	   static module registration; this function is only used for shared libraries. */
+	gmt_M_unused(API); gmt_M_unused(module); gmt_M_unused(lib_no);
+	return (NULL);
 }
 
 /*! . */
 GMT_LOCAL const char *gmtapi_get_shared_module_group (struct GMTAPI_CTRL *API, char *module, unsigned int lib_no) {
-	/* Function that returns a pointer to the module group string in specified shared library lib_no, or NULL if not found  */
-	/* DO not rename this function */
-	char function[GMT_LEN64] = {""};
-	const char *group = NULL;       /* char pointer to module group */
-	const char * (*func)(void*, char*) = NULL;       /* function pointer */
-	if (API->lib[lib_no].skip) return (NULL);	/* Tried to open this shared library before and it was not available */
-	if (API->lib[lib_no].handle == NULL && (API->lib[lib_no].handle = dlopen (API->lib[lib_no].path, RTLD_LAZY)) == NULL) {	/* Not opened this shared library yet */
-		GMT_Report (API, GMT_MSG_ERROR, "Unable to open GMT shared %s library: %s\n", API->lib[lib_no].name, dlerror());
-		API->lib[lib_no].skip = true;	/* Not bother the next time... */
-		return (NULL);			/* ...and obviously no keys would be found */
-	}
-	snprintf (function, GMT_LEN64, "%s_module_group", API->lib[lib_no].name);
-	/* Here the library handle is available; try to get pointer to specified module */
-	*(void **) (&func) = dlsym (API->lib[lib_no].handle, function);
-	if (func) group = (*func) (API, module);
-	return (group);
+	/* Static build: skip dlopen/dlsym entirely. */
+	gmt_M_unused(API); gmt_M_unused(module); gmt_M_unused(lib_no);
+	return (NULL);
 }
 
 /*! . */
