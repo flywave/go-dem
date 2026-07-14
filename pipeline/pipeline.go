@@ -53,32 +53,6 @@ func RunDEM(points []waffle.Point, region *dem.Region, method dem.InterpMethod, 
 	return dem.CreateDEMWithConfig(result.DEM, region, outPath, outCfg)
 }
 
-func RunGMTBlockmean(points []waffle.Point, region *dem.Region, method dem.InterpMethod, opts *waffle.Options, outPath string, cfg Config) error {
-	w, err := waffle.New(method)
-	if err != nil {
-		return fmt.Errorf("waffle: %v", err)
-	}
-
-	result, err := w.Run(points, opts)
-	if err != nil {
-		return fmt.Errorf("interpolation: %v", err)
-	}
-
-	if cfg.TargetEpsg > 0 && cfg.TargetEpsg != cfg.SourceEpsg {
-		transformed, err := datum.TransformDEM(result.DEM, region, cfg.SourceEpsg, cfg.TargetEpsg)
-		if err != nil {
-			return fmt.Errorf("datum target: %v", err)
-		}
-		result.DEM = transformed
-	}
-
-	outCfg := dem.OutputConfig{
-		NoData:        cfg.NoData,
-		VerticalDatum: cfg.VerticalDatum,
-	}
-	return dem.CreateDEMWithConfig(result.DEM, region, outPath, outCfg)
-}
-
 func verticalEPSG(vd geoid.VerticalDatum) int {
 	switch vd {
 	case geoid.EGM84:

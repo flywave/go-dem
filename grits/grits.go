@@ -20,10 +20,19 @@ const (
 	FilterDilate     FilterType = "dilate"
 	FilterOpen       FilterType = "open"
 	FilterClose      FilterType = "close"
+	FilterZScore     FilterType = "zscore"
+	FilterBlur       FilterType = "blur"
+	FilterCut        FilterType = "cut"
+	FilterDenoise    FilterType = "denoise"
+	FilterFlats      FilterType = "flats"
+	FilterOutliers            FilterType = "outliers"
+	FilterEuclideanDistance   FilterType = "euclidean_distance"
+	FilterEuclideanMerge      FilterType = "euclidean_merge"
 )
 
 type Options struct {
 	Sigma       float64
+	SigmaColor  float64
 	Radius      int
 	KernelSize  int
 	Threshold   float64
@@ -32,6 +41,10 @@ type Options struct {
 	NoData      *float64
 	PolygonWKT  string
 	SourceMask  string
+	CutBounds   [4]float64
+	CutInvert   bool
+	Method      string
+	Percentile  float64
 }
 
 func (o *Options) GetNoData() float64 {

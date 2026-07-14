@@ -9,10 +9,24 @@ import (
 
 type gaussianFilter struct{ baseGrits }
 type medianFilter struct{ baseGrits }
+type blurFilter struct{ baseGrits }
 
 func init() {
 	Register(FilterGaussian, func() Grits { return &gaussianFilter{baseGrits{name: string(FilterGaussian)}} })
 	Register(FilterMedian, func() Grits { return &medianFilter{baseGrits{name: string(FilterMedian)}} })
+	Register(FilterBlur, func() Grits { return &blurFilter{baseGrits{name: string(FilterBlur)}} })
+}
+
+func (f *blurFilter) Run(data []float64, region *dem.Region, opts *Options) ([]float64, error) {
+	sigma := opts.Sigma
+	if sigma <= 0 {
+		sigma = 1.0
+	}
+	radius := opts.Radius
+	if radius <= 0 {
+		radius = int(math.Ceil(sigma * 2))
+	}
+	return gaussianBlur(data, region.XSize, region.YSize, sigma, radius), nil
 }
 
 func (f *gaussianFilter) Run(data []float64, region *dem.Region, opts *Options) ([]float64, error) {
