@@ -12,6 +12,8 @@ extern int GMT_grdfilter(void *API, int mode, void *args);
 extern int GMT_triangulate(void *API, int mode, void *args);
 extern int GMT_blockmean(void *API, int mode, void *args);
 extern int GMT_nearneighbor(void *API, int mode, void *args);
+extern int GMT_grdmask(void *API, int mode, void *args);
+extern int GMT_grdsample(void *API, int mode, void *args);
 
 static void *g_api = NULL;
 
@@ -20,12 +22,14 @@ int gdemo_gmt_begin(void) {
     g_api = GMT_Create_Session("go-dem", 0, 0, NULL);
     if (g_api == NULL) return -1;
     /* Register static modules so GMT_Call_Module finds them without dlsym.
-       Surface internally calls grdmask, so register that too. */
+       Surface internally calls grdmask; grdfilter calls grdsample. */
     GMT_Register_Module_Static("GMT_surface", (void*)GMT_surface);
     GMT_Register_Module_Static("GMT_grdfilter", (void*)GMT_grdfilter);
     GMT_Register_Module_Static("GMT_triangulate", (void*)GMT_triangulate);
     GMT_Register_Module_Static("GMT_blockmean", (void*)GMT_blockmean);
     GMT_Register_Module_Static("GMT_nearneighbor", (void*)GMT_nearneighbor);
+    GMT_Register_Module_Static("GMT_grdmask", (void*)GMT_grdmask);
+    GMT_Register_Module_Static("GMT_grdsample", (void*)GMT_grdsample);
     return 0;
 }
 

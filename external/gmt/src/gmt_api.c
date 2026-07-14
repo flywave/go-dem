@@ -934,6 +934,12 @@ GMT_LOCAL int gmtapi_check_for_modern_oneliner (struct GMTAPI_CTRL *API, const c
 	int error = GMT_NOERROR, modern;
 	struct GMT_OPTION *opt, *head = NULL;
 
+	/* Guard: if GMT control struct isn't fully initialized, skip modern mode check */
+	if (API == NULL || API->GMT == NULL) return GMT_NOERROR;
+
+	/* Prime malloc/strdup to avoid dyld TLS crash on first allocation from C */
+	{ void *volatile _p = malloc(64); free(_p); }
+
 	head = GMT_Create_Options (API, mode, args);	/* Get option list */
 	modern = gmtapi_modern_oneliner (API, head);		/* Return true if one-liner syntax was detected */
 	if (modern == GMT_NOTSET) {
@@ -12829,21 +12835,10 @@ GMT_LOCAL void * gmtapi_get_shared_module_func (struct GMTAPI_CTRL *API, const c
 	/* Check static registry first (avoids dlsym which crashes in Go CGo binaries) */
 	p_func = gmtapi_find_static_module (module);
 	if (p_func) return p_func;
-	/* Static builds: skip dlsym entirely on subsequent lookups since C symbols
-	   are not exported in Go-linked Mach-O binaries.  */
-	if (API->lib[lib_no].skip) return (NULL);
-	if (API->lib[lib_no].handle == NULL && (API->lib[lib_no].handle = dlopen (API->lib[lib_no].path, RTLD_LAZY)) == NULL) {
-		GMT_Report (API, GMT_MSG_DEBUG, "Unable to open GMT shared %s library: %s\n", API->lib[lib_no].name, dlerror());
-		API->lib[lib_no].skip = true;
-		return (NULL);
-	}
-	/* Try dlsym but handle gracefully — on some platforms (Go+macOS) this crashes */
-	p_func = dlsym (API->lib[lib_no].handle, module);
-	if (p_func == NULL && !API->lib[lib_no].skip) {
-		/* dlsym failed; don't retry this module path again */
-		API->lib[lib_no].skip = true;
-	}
-	return (p_func);
+	/* Module not in static registry — just return NULL.
+	   Skip dlopen/dlsym entirely: in static builds with Go CGo, dlsym on
+	   the main executable crashes dyld (Mach-O layout incompatibility). */
+	return (NULL);
 }
 
 /*! . */
