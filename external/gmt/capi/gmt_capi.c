@@ -1,22 +1,11 @@
 #include "gmt_capi.h"
 #include <stdio.h>
 #include <string.h>
-#include <stdlib.h>
-
-typedef int (*gmt_module_func)(void *, int, void *);
 
 void *GMT_Create_Session(const char *tag, unsigned int pad, unsigned int mode, int (*print_func)(FILE *, const char *));
 int GMT_Destroy_Session(void *API);
-
-/* Option list API (from libgmt) */
-struct GMT_OPTION {
-    struct GMT_OPTION *next;
-    char option;
-    char *arg;
-};
-struct GMT_OPTION *GMT_Make_Option(void *API, char option, const char *arg);
-struct GMT_OPTION *GMT_Append_Option(void *API, struct GMT_OPTION *new_opt, struct GMT_OPTION *head);
-void GMT_Destroy_Options(void *API, struct GMT_OPTION **head);
+int GMT_Call_Module(void *API, const char *module, int mode, void *args);
+int GMT_Register_Module_Static(const char *name, void *func);
 
 extern int GMT_surface(void *API, int mode, void *args);
 extern int GMT_grdfilter(void *API, int mode, void *args);
@@ -29,84 +18,71 @@ static void *g_api = NULL;
 int gdemo_gmt_begin(void) {
     if (g_api) return 0;
     g_api = GMT_Create_Session("go-dem", 0, 0, NULL);
-    return (g_api == NULL) ? -1 : 0;
+    if (g_api == NULL) return -1;
+    /* Register static modules so GMT_Call_Module finds them without dlsym.
+       Surface internally calls grdmask, so register that too. */
+    GMT_Register_Module_Static("GMT_surface", (void*)GMT_surface);
+    GMT_Register_Module_Static("GMT_grdfilter", (void*)GMT_grdfilter);
+    GMT_Register_Module_Static("GMT_triangulate", (void*)GMT_triangulate);
+    GMT_Register_Module_Static("GMT_blockmean", (void*)GMT_blockmean);
+    GMT_Register_Module_Static("GMT_nearneighbor", (void*)GMT_nearneighbor);
+    return 0;
 }
 
 void gdemo_gmt_end(void) {
-    if (g_api) {
-        GMT_Destroy_Session(g_api);
-        g_api = NULL;
-    }
+    if (g_api) { GMT_Destroy_Session(g_api); g_api = NULL; }
 }
 
-/* Build option list from space-separated command string, call module with mode=-1. */
-static int call_module_opt(gmt_module_func func, const char *cmd) {
+static int call_module(const char *name, const char *cmd) {
     if (gdemo_gmt_begin() != 0) return -1;
-    char buf[2048], *save, *tok;
-    struct GMT_OPTION *head = NULL;
-    strncpy(buf, cmd, sizeof(buf));
-    buf[sizeof(buf)-1] = '\0';
-    save = buf;
-    while ((tok = strtok_r(save, " ", &save))) {
-        if (tok[0] == '-' && tok[1]) {
-            char opt = tok[1];
-            const char *arg = tok[2] ? tok + 2 : "";
-            head = GMT_Append_Option(g_api, GMT_Make_Option(g_api, opt, arg), head);
-        } else {
-            head = GMT_Append_Option(g_api, GMT_Make_Option(g_api, '<', tok), head);
-        }
-    }
-    int ret = (*func)(g_api, -1, head);
-    GMT_Destroy_Options(g_api, &head);
-    return ret;
+    return GMT_Call_Module(g_api, name, 0, (void*)cmd);
 }
 
-int gmt_surface(const char *input_file, const char *output_file,
+int gmt_surface(const char *in, const char *out,
                 double tension, double xinc, double yinc,
                 double xmin, double xmax, double ymin, double ymax) {
     char cmd[2048];
     snprintf(cmd, sizeof(cmd),
         "-G%s -I%.10g/%.10g -R%.10g/%.10g/%.10g/%.10g -T%.10g %s",
-        output_file, xinc, yinc, xmin, xmax, ymin, ymax, tension, input_file);
-    return call_module_opt(GMT_surface, cmd);
+        out, xinc, yinc, xmin, xmax, ymin, ymax, tension, in);
+    return call_module("surface", cmd);
 }
 
-int gmt_grdfilter(const char *input_file, const char *output_file,
+int gmt_grdfilter(const char *in, const char *out,
                   const char *filter_type, const char *dist_flag) {
     char cmd[2048];
-    snprintf(cmd, sizeof(cmd),
-        "-G%s -F%s -D%s %s", output_file, filter_type, dist_flag, input_file);
-    return call_module_opt(GMT_grdfilter, cmd);
+    snprintf(cmd, sizeof(cmd), "-G%s -F%s -D%s %s", out, filter_type, dist_flag, in);
+    return call_module("grdfilter", cmd);
 }
 
-int gmt_triangulate(const char *input_file, const char *output_file,
+int gmt_triangulate(const char *in, const char *out,
                     double xinc, double yinc,
                     double xmin, double xmax, double ymin, double ymax) {
     char cmd[2048];
     snprintf(cmd, sizeof(cmd),
         "-G%s -I%.10g/%.10g -R%.10g/%.10g/%.10g/%.10g %s",
-        output_file, xinc, yinc, xmin, xmax, ymin, ymax, input_file);
-    return call_module_opt(GMT_triangulate, cmd);
+        out, xinc, yinc, xmin, xmax, ymin, ymax, in);
+    return call_module("triangulate", cmd);
 }
 
-int gmt_blockmean(const char *input_file, const char *output_file,
+int gmt_blockmean(const char *in, const char *out,
                   double xinc, double yinc,
                   double xmin, double xmax, double ymin, double ymax) {
     char cmd[2048];
     snprintf(cmd, sizeof(cmd),
         "-G%s -I%.10g/%.10g -R%.10g/%.10g/%.10g/%.10g %s",
-        output_file, xinc, yinc, xmin, xmax, ymin, ymax, input_file);
-    return call_module_opt(GMT_blockmean, cmd);
+        out, xinc, yinc, xmin, xmax, ymin, ymax, in);
+    return call_module("blockmean", cmd);
 }
 
-int gmt_nearneighbor(const char *input_file, const char *output_file,
+int gmt_nearneighbor(const char *in, const char *out,
                      double xinc, double yinc,
                      double xmin, double xmax, double ymin, double ymax,
                      double search_radius, int empty_value) {
     char cmd[2048];
     snprintf(cmd, sizeof(cmd),
         "-G%s -I%.10g/%.10g -R%.10g/%.10g/%.10g/%.10g -S%.10g -N%d %s",
-        output_file, xinc, yinc, xmin, xmax, ymin, ymax,
-        search_radius, empty_value, input_file);
-    return call_module_opt(GMT_nearneighbor, cmd);
+        out, xinc, yinc, xmin, xmax, ymin, ymax,
+        search_radius, empty_value, in);
+    return call_module("nearneighbor", cmd);
 }

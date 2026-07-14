@@ -12792,18 +12792,57 @@ const char * gmt_show_name_and_purpose (void *V_API, const char *component, cons
 
 /* Module Extension: Allow listing and calling modules by name */
 
+/* Static registry for statically-linked modules */
+#define GMT_STATIC_MODULE_MAX 64
+static struct { char name[64]; void *func; int used; } gmt_static_modules[GMT_STATIC_MODULE_MAX];
+static int gmt_static_module_count = 0;
+
+int GMT_Register_Module_Static (const char *name, void *func) {
+	if (gmt_static_module_count >= GMT_STATIC_MODULE_MAX) return -1;
+	strncpy (gmt_static_modules[gmt_static_module_count].name, name, 63);
+	gmt_static_modules[gmt_static_module_count].name[63] = '\0';
+	gmt_static_modules[gmt_static_module_count].func = func;
+	gmt_static_modules[gmt_static_module_count].used = 0;
+	gmt_static_module_count++;
+	return 0;
+}
+
+static void * gmtapi_find_static_module (const char *module) {
+	int i;
+	for (i = 0; i < gmt_static_module_count; i++)
+		if (!strcmp (gmt_static_modules[i].name, module))
+			return gmt_static_modules[i].func;
+	if (strncmp (module, "GMT_", 4)) {
+		char prefixed[64];
+		snprintf (prefixed, sizeof(prefixed), "GMT_%s", module);
+		for (i = 0; i < gmt_static_module_count; i++)
+			if (!strcmp (gmt_static_modules[i].name, prefixed))
+				return gmt_static_modules[i].func;
+	}
+	return NULL;
+}
+
 /*! . */
 GMT_LOCAL void * gmtapi_get_shared_module_func (struct GMTAPI_CTRL *API, const char *module, unsigned int lib_no) {
 	/* Function that returns a pointer to the function named module in specified shared library lib_no, or NULL if not found  */
 	void *p_func = NULL;       /* function pointer */
-	if (API->lib[lib_no].skip) return (NULL);	/* Tried to open this shared library before and it was not available */
-	if (API->lib[lib_no].handle == NULL && (API->lib[lib_no].handle = dlopen (API->lib[lib_no].path, RTLD_LAZY)) == NULL) {	/* Not opened this shared library yet */
-		GMT_Report (API, GMT_MSG_ERROR, "Unable to open GMT shared %s library: %s\n", API->lib[lib_no].name, dlerror());
-		API->lib[lib_no].skip = true;	/* Not bother the next time... */
-		return (NULL);			/* ...and obviously no function would be found */
+	/* Check static registry first (avoids dlsym which crashes in Go CGo binaries) */
+	p_func = gmtapi_find_static_module (module);
+	if (p_func) return p_func;
+	/* Static builds: skip dlsym entirely on subsequent lookups since C symbols
+	   are not exported in Go-linked Mach-O binaries.  */
+	if (API->lib[lib_no].skip) return (NULL);
+	if (API->lib[lib_no].handle == NULL && (API->lib[lib_no].handle = dlopen (API->lib[lib_no].path, RTLD_LAZY)) == NULL) {
+		GMT_Report (API, GMT_MSG_DEBUG, "Unable to open GMT shared %s library: %s\n", API->lib[lib_no].name, dlerror());
+		API->lib[lib_no].skip = true;
+		return (NULL);
 	}
-	/* Here the library handle is available; try to get pointer to specified module */
-	*(void **) (&p_func) = dlsym (API->lib[lib_no].handle, module);
+	/* Try dlsym but handle gracefully — on some platforms (Go+macOS) this crashes */
+	p_func = dlsym (API->lib[lib_no].handle, module);
+	if (p_func == NULL && !API->lib[lib_no].skip) {
+		/* dlsym failed; don't retry this module path again */
+		API->lib[lib_no].skip = true;
+	}
 	return (p_func);
 }
 
