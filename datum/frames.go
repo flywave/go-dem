@@ -108,15 +108,45 @@ var GeoidModels = map[string]struct {
 
 func GetFrameByEPSG(epsg int) *Frame {
 	if f, ok := TidalFrames[epsg]; ok {
-		return &f
+		cp := f
+		return &cp
 	}
 	if f, ok := HTDPFrames[epsg]; ok {
-		return &f
+		cp := f
+		return &cp
 	}
 	if f, ok := CDNFrames[epsg]; ok {
-		return &f
+		cp := f
+		return &cp
 	}
 	return nil
+}
+
+func GetGeoidUncertainty(model string) float64 {
+	if g, ok := GeoidModels[model]; ok {
+		return g.Uncertainty
+	}
+	return 0
+}
+
+func FrameUncertainty(epsg int) float64 {
+	if f := GetFrameByEPSG(epsg); f != nil {
+		return f.Uncertainty
+	}
+	return 0
+}
+
+func FrameTypeOf(epsg int) FrameType {
+	if _, ok := TidalFrames[epsg]; ok {
+		return FrameTidal
+	}
+	if _, ok := HTDPFrames[epsg]; ok {
+		return FrameHTDP
+	}
+	if _, ok := CDNFrames[epsg]; ok {
+		return FrameCDN
+	}
+	return -1
 }
 
 func GetFrameByName(name string) *Frame {

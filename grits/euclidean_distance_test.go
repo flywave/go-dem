@@ -1,7 +1,6 @@
 package grits
 
 import (
-	"math"
 	"testing"
 
 	"github.com/flywave/go-dem"
@@ -71,26 +70,6 @@ func TestEuclideanDistance_Monotonic(t *testing.T) {
 	}
 }
 
-func TestEuclideanMerge_Basic(t *testing.T) {
-	w, h := 5, 5
-	nd := -9999.0
-	base := makeFlatDEM(w, h, 100)
-	base[2*w+2] = nd
-
-	other := makeFlatDEM(w, h, 200)
-	other[1*w+1] = nd
-
-	reg := dem.NewRegionFromBBox(0, 0, float64(w), float64(h), nil, 1, 1)
-	m := &euclideanMergeFilter{}
-	res, err := m.Run(base, reg, nil)
-	if err != nil {
-		t.Fatalf("nil source mask error: %v", err)
-	}
-	if len(res) != w*h {
-		t.Errorf("output size mismatch")
-	}
-}
-
 func TestEuclideanDistance_AllNoData(t *testing.T) {
 	w, h := 4, 4
 	nd := -9999.0
@@ -106,19 +85,5 @@ func TestEuclideanDistance_AllNoData(t *testing.T) {
 		if v != 0 {
 			t.Errorf("all nodata: pixel %d should be 0, got %.2f", i, v)
 		}
-	}
-}
-
-func TestComputeEuclideanDistance(t *testing.T) {
-	w, h := 3, 3
-	nd := -9999.0
-	data := []float64{
-		100, 100, 100,
-		100, nd, 100,
-		100, 100, 100,
-	}
-	dist := computeEuclideanDistance(data, w, h, nd, 1.0)
-	if math.Abs(dist[0]-math.Sqrt2) > 0.01 {
-		t.Logf("corner distance: expected ~1.41, got %.4f", dist[0])
 	}
 }

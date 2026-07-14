@@ -72,6 +72,14 @@ func (vt *VerticalTransform) verticalTransform(epsgIn, epsgOut int) ([]float64, 
 		return transArray, uncArray, epsgOut
 	}
 
+	baseUnc := frameIn.Uncertainty
+	if frameOut.Uncertainty > baseUnc {
+		baseUnc = frameOut.Uncertainty
+	}
+	for i := range uncArray {
+		uncArray[i] = baseUnc
+	}
+
 	steps := planSteps(epsgIn, epsgOut, frameIn, frameOut)
 
 	currentEpsg := epsgIn
@@ -81,6 +89,13 @@ func (vt *VerticalTransform) verticalTransform(epsgIn, epsgOut int) ([]float64, 
 			transArray[i] += stepGrid[i]
 		}
 		currentEpsg = step.to
+
+		stepUnc := FrameUncertainty(step.to)
+		if stepUnc > 0 {
+			for i := range uncArray {
+				uncArray[i] = math.Sqrt(uncArray[i]*uncArray[i] + stepUnc*stepUnc)
+			}
+		}
 	}
 
 	return transArray, uncArray, currentEpsg

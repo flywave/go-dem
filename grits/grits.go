@@ -27,7 +27,7 @@ const (
 	FilterFlats      FilterType = "flats"
 	FilterOutliers            FilterType = "outliers"
 	FilterEuclideanDistance   FilterType = "euclidean_distance"
-	FilterEuclideanMerge      FilterType = "euclidean_merge"
+	FilterFlattenNoData       FilterType = "flatten_nodata"
 )
 
 type Options struct {
