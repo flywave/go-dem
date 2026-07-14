@@ -1,3 +1,0 @@
-testget(global): /zero;/one;/two;/three;/four
-testget(hdf5): /zero;/one;/two;/three;/four
-testget(nczarr): /zero;/one;/two;/three;/four

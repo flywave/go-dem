@@ -2,12 +2,9 @@ package pipeline
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/flywave/go-dem"
 	"github.com/flywave/go-dem/datum"
-	"github.com/flywave/go-dem/dem/gmt"
 	"github.com/flywave/go-dem/waffle"
 	"github.com/flywave/go-geoid"
 )
@@ -17,13 +14,6 @@ type Config struct {
 	TargetEpsg    int
 	VerticalDatum geoid.VerticalDatum
 	NoData        float64
-	GMTFilter     *GMTConfig
-}
-
-type GMTConfig struct {
-	FilterType         string
-	FilterDistance     float64
-	FilterThreshold    float64
 }
 
 func RunDEM(points []waffle.Point, region *dem.Region, method dem.InterpMethod, opts *waffle.Options, outPath string, cfg Config) error {
@@ -56,55 +46,11 @@ func RunDEM(points []waffle.Point, region *dem.Region, method dem.InterpMethod, 
 		result.DEM = transformed
 	}
 
-	if cfg.GMTFilter != nil {
-		filtered, err := applyGMTFilter(result.DEM, region, cfg.GMTFilter, cfg.NoData)
-		if err != nil {
-			return fmt.Errorf("gmt filter: %v", err)
-		}
-		result.DEM = filtered
-	}
-
 	outCfg := dem.OutputConfig{
 		NoData:        cfg.NoData,
 		VerticalDatum: cfg.VerticalDatum,
 	}
 	return dem.CreateDEMWithConfig(result.DEM, region, outPath, outCfg)
-}
-
-func applyGMTFilter(data []float64, region *dem.Region, gmtCfg *GMTConfig, noData float64) ([]float64, error) {
-	tmpDir, err := os.MkdirTemp("", "pipeline_gmt_*")
-	if err != nil {
-		return nil, fmt.Errorf("temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	inPath := filepath.Join(tmpDir, "input.tif")
-	outPath := filepath.Join(tmpDir, "output.tif")
-
-	if err := dem.CreateDEM(data, region, inPath, noData); err != nil {
-		return nil, fmt.Errorf("write input: %v", err)
-	}
-
-	filterType := gmtCfg.FilterType
-	if filterType == "" {
-		filterType = "c100"
-	}
-
-	dist := gmtCfg.FilterDistance
-	if dist <= 0 {
-		dist = region.XRes
-	}
-	distFlag := fmt.Sprintf("%.10f", dist)
-
-	if err := gmt.Grdfilter(inPath, outPath, filterType, distFlag); err != nil {
-		return nil, fmt.Errorf("gmt grdfilter: %v", err)
-	}
-
-	result, _, err := dem.ReadDEM(outPath)
-	if err != nil {
-		return nil, fmt.Errorf("read result: %v", err)
-	}
-	return result, nil
 }
 
 func RunGMTBlockmean(points []waffle.Point, region *dem.Region, method dem.InterpMethod, opts *waffle.Options, outPath string, cfg Config) error {
@@ -124,14 +70,6 @@ func RunGMTBlockmean(points []waffle.Point, region *dem.Region, method dem.Inter
 			return fmt.Errorf("datum target: %v", err)
 		}
 		result.DEM = transformed
-	}
-
-	if cfg.GMTFilter != nil {
-		filtered, err := applyGMTFilter(result.DEM, region, cfg.GMTFilter, cfg.NoData)
-		if err != nil {
-			return fmt.Errorf("gmt filter: %v", err)
-		}
-		result.DEM = filtered
 	}
 
 	outCfg := dem.OutputConfig{

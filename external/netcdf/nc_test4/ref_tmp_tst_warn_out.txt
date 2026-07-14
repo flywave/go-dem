@@ -1,4 +1,0 @@
-
-*** Testing for HDF5 extra output
-*** Testing create of parallel I/O file...ok.
-*** Tests successful!

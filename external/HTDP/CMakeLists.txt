@@ -54,22 +54,6 @@ elseif(UNIX)
     )
 endif()
 
-# Also build the htdp executable (for os/exec use)
-add_executable(htdp_exe
-    ${HTDP_FSRC}
-)
-
-set_target_properties(htdp_exe PROPERTIES
-    OUTPUT_NAME htdp
-    Fortran_FLAGS "-O2 -ffixed-line-length-132"
-)
-
-if(APPLE)
-    set_target_properties(htdp_exe PROPERTIES
-        Fortran_FLAGS "-O2 -ffixed-line-length-132"
-    )
-endif()
-
 # Output directories
 set(FLYWAVE_BASE_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../libs")
 
@@ -98,19 +82,10 @@ set_target_properties(htdp PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY_RELEASE ${FLYWAVE_LIBRARY_OUTPUT_PATH}
 )
 
-set_target_properties(htdp_exe PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY_DEBUG ${FLYWAVE_LIBRARY_OUTPUT_PATH}
-    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${FLYWAVE_LIBRARY_OUTPUT_PATH}
-)
-
 # Install rules
 install(TARGETS htdp
     ARCHIVE DESTINATION ${FLYWAVE_LIBRARY_OUTPUT_PATH}
     LIBRARY DESTINATION ${FLYWAVE_LIBRARY_OUTPUT_PATH}
-)
-
-install(TARGETS htdp_exe
-    RUNTIME DESTINATION ${FLYWAVE_LIBRARY_OUTPUT_PATH}
 )
 
 install(DIRECTORY ${HTDP_SRC_DIR}/capi/

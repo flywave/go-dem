@@ -1,1 +1,0 @@
-testxget(global): /zero;/one;/two;/three;/four
