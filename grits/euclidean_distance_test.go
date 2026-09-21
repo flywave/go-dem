@@ -40,7 +40,7 @@ func TestEuclideanDistance_WithNoData(t *testing.T) {
 		t.Errorf("nodata pixel should have distance 0, got %.2f", res[2*w+2])
 	}
 	if res[2*w+2-1] <= 0 {
-		t.Log("neighbor of nodata should have positive distance")
+		t.Errorf("neighbor of nodata should have positive distance, got %.2f", res[2*w+2-1])
 	}
 }
 

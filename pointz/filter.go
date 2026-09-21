@@ -10,7 +10,7 @@ type OutlierMethod string
 
 const (
 	MethodStatistical OutlierMethod = "statistical"
-	MethodRadius     OutlierMethod = "radius"
+	MethodRadius      OutlierMethod = "radius"
 )
 
 type FilterOptions struct {
@@ -23,7 +23,12 @@ type FilterOptions struct {
 	OutputPath string
 }
 
-func RemoveOutliers(opts *FilterOptions) error {
+// MarkOutliers flags outliers in the output cloud (classification code 7)
+// without removing the points.
+func MarkOutliers(opts *FilterOptions) error {
+	if opts == nil {
+		return fmt.Errorf("filter options are required")
+	}
 	switch opts.Method {
 	case MethodStatistical:
 		meanK := opts.MeanK
@@ -52,7 +57,11 @@ func RemoveOutliers(opts *FilterOptions) error {
 	}
 }
 
-func RemoveOutliersRemove(opts *FilterOptions) error {
+// RemoveOutliers removes outlier points from the output cloud.
+func RemoveOutliers(opts *FilterOptions) error {
+	if opts == nil {
+		return fmt.Errorf("filter options are required")
+	}
 	switch opts.Method {
 	case MethodStatistical:
 		meanK := opts.MeanK
@@ -79,4 +88,9 @@ func RemoveOutliersRemove(opts *FilterOptions) error {
 	default:
 		return fmt.Errorf("unknown outlier method: %s", opts.Method)
 	}
+}
+
+// RemoveOutliersRemove is a deprecated alias for RemoveOutliers.
+func RemoveOutliersRemove(opts *FilterOptions) error {
+	return RemoveOutliers(opts)
 }

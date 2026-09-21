@@ -1,6 +1,8 @@
 package datum
 
 import (
+	"context"
+	"fmt"
 	"math"
 
 	"github.com/flywave/go-dem"
@@ -9,6 +11,11 @@ import (
 	"github.com/flywave/go3d/float64/vec2"
 )
 
+const mslEPSG = 5714
+const ellipsoidEPSG = 7912
+
+var mslModel = geoid.EGM96
+
 type TransformOptions struct {
 	EpsgIn   int
 	EpsgOut  int
@@ -16,38 +23,52 @@ type TransformOptions struct {
 	GeoidOut string
 	Region   *dem.Region
 	NoData   float64
+	Progress dem.ProgressFunc
+	Ctx      context.Context
 }
 
 type TransformResult struct {
 	Grid        []float64
 	Uncertainty []float64
 	EpsgOut     int
+	NoData      float64
 }
 
 type VerticalTransform struct {
-	opts     TransformOptions
-	xCount   int
-	yCount   int
-	geoTrans [6]float64
+	opts       TransformOptions
+	xCount     int
+	yCount     int
+	geoTrans   [6]float64
+	geoidGrids map[geoid.VerticalDatum][]float64
 }
 
 func NewVerticalTransform(opts TransformOptions) *VerticalTransform {
 	region := opts.Region
-	gt := region.GeoTransform()
+	gt := [6]float64{}
+	xCount, yCount := 0, 0
+	if region != nil {
+		gt = region.GeoTransform()
+		xCount, yCount = region.XSize, region.YSize
+	}
 	return &VerticalTransform{
-		opts:     opts,
-		xCount:   region.XSize,
-		yCount:   region.YSize,
-		geoTrans: gt,
+		opts:       opts,
+		xCount:     xCount,
+		yCount:     yCount,
+		geoTrans:   gt,
+		geoidGrids: make(map[geoid.VerticalDatum][]float64),
 	}
 }
 
 func (vt *VerticalTransform) Run() (*TransformResult, error) {
-	grid, unc, outEpsg := vt.verticalTransform(vt.opts.EpsgIn, vt.opts.EpsgOut)
+	grid, unc, outEpsg, err := vt.verticalTransform(vt.opts.EpsgIn, vt.opts.EpsgOut)
+	if err != nil {
+		return nil, err
+	}
 	return &TransformResult{
 		Grid:        grid,
 		Uncertainty: unc,
 		EpsgOut:     outEpsg,
+		NoData:      vt.opts.NoData,
 	}, nil
 }
 
@@ -57,40 +78,57 @@ type transformStep struct {
 	via  string
 }
 
-func (vt *VerticalTransform) verticalTransform(epsgIn, epsgOut int) ([]float64, []float64, int) {
+func (vt *VerticalTransform) verticalTransform(epsgIn, epsgOut int) ([]float64, []float64, int, error) {
+	if vt.opts.Region == nil {
+		return nil, nil, epsgOut, fmt.Errorf("no region specified for vertical transform")
+	}
+
 	n := vt.xCount * vt.yCount
 	transArray := make([]float64, n)
 	uncArray := make([]float64, n)
 
 	if epsgIn == epsgOut {
-		return transArray, uncArray, epsgOut
+		return transArray, uncArray, epsgOut, nil
 	}
 
 	frameIn := GetFrameByEPSG(epsgIn)
 	frameOut := GetFrameByEPSG(epsgOut)
 	if frameIn == nil || frameOut == nil {
-		return transArray, uncArray, epsgOut
+		return nil, nil, epsgOut, fmt.Errorf("unknown vertical frame: EPSG %d or %d is not a registered vertical datum", epsgIn, epsgOut)
 	}
 
-	baseUnc := frameIn.Uncertainty
-	if frameOut.Uncertainty > baseUnc {
-		baseUnc = frameOut.Uncertainty
-	}
 	for i := range uncArray {
-		uncArray[i] = baseUnc
+		uncArray[i] = frameIn.Uncertainty
 	}
 
-	steps := planSteps(epsgIn, epsgOut, frameIn, frameOut)
+	steps, err := planSteps(epsgIn, epsgOut, frameIn, frameOut)
+	if err != nil {
+		return nil, nil, epsgOut, err
+	}
+	if len(steps) == 0 {
+		return nil, nil, epsgOut, fmt.Errorf("no transform path from EPSG %d to %d", epsgIn, epsgOut)
+	}
 
 	currentEpsg := epsgIn
-	for _, step := range steps {
-		stepGrid := vt.executeStep(step, currentEpsg)
+	for i, step := range steps {
+		if step.from != currentEpsg {
+			return nil, nil, currentEpsg, fmt.Errorf("broken transform chain: step %d→%d but current frame is %d", step.from, step.to, currentEpsg)
+		}
+		if err := dem.CheckCtx(vt.opts.Ctx); err != nil {
+			return nil, nil, currentEpsg, fmt.Errorf("%s: %w", step.via, err)
+		}
+		dem.ReportProgress(vt.opts.Progress, step.via, i, len(steps))
+		stepGrid, geoidUnc, err := vt.executeStep(step)
+		if err != nil {
+			return nil, nil, currentEpsg, err
+		}
+		dem.ReportProgress(vt.opts.Progress, step.via, i+1, len(steps))
 		for i := range transArray {
 			transArray[i] += stepGrid[i]
 		}
 		currentEpsg = step.to
 
-		stepUnc := FrameUncertainty(step.to)
+		stepUnc := math.Hypot(FrameUncertainty(step.to), geoidUnc)
 		if stepUnc > 0 {
 			for i := range uncArray {
 				uncArray[i] = math.Sqrt(uncArray[i]*uncArray[i] + stepUnc*stepUnc)
@@ -98,83 +136,122 @@ func (vt *VerticalTransform) verticalTransform(epsgIn, epsgOut int) ([]float64, 
 		}
 	}
 
-	return transArray, uncArray, currentEpsg
+	return transArray, uncArray, currentEpsg, nil
 }
 
-func planSteps(epsgIn, epsgOut int, frameIn, frameOut *Frame) []transformStep {
-	var steps []transformStep
-
-	switch {
-	case frameIn.Type == FrameTidal && frameOut.Type == FrameTidal:
-		steps = append(steps, transformStep{from: epsgIn, to: 5714, via: "tidal2msl"})
-		steps = append(steps, transformStep{from: 5714, to: epsgOut, via: "msl2tidal"})
-
-	case frameIn.Type == FrameTidal && frameOut.Type == FrameCDN:
-		steps = append(steps, transformStep{from: epsgIn, to: 5714, via: "tidal2msl"})
-		steps = append(steps, transformStep{from: 5714, to: epsgOut, via: "msl2geoid"})
-
-	case frameIn.Type == FrameCDN && frameOut.Type == FrameTidal:
-		steps = append(steps, transformStep{from: epsgIn, to: 5714, via: "geoid2msl"})
-		steps = append(steps, transformStep{from: 5714, to: epsgOut, via: "msl2tidal"})
-
-	case frameIn.Type == FrameCDN && frameOut.Type == FrameCDN:
-		steps = append(steps, transformStep{from: epsgIn, to: epsgOut, via: "cdn2cdn"})
-
-	case frameIn.Type == FrameHTDP || frameOut.Type == FrameHTDP:
-		if frameIn.Type == FrameCDN {
-			steps = append(steps, transformStep{from: epsgIn, to: 7912, via: "cdn2ellipsoid"})
-		}
-		if frameIn.Type == FrameTidal {
-			steps = append(steps, transformStep{from: epsgIn, to: 5714, via: "tidal2msl"})
-			steps = append(steps, transformStep{from: 5714, to: 7912, via: "msl2ellipsoid"})
-		}
-		if frameIn.Type == FrameHTDP && frameOut.Type == FrameHTDP {
-			steps = append(steps, transformStep{from: epsgIn, to: epsgOut, via: "htdp2htdp"})
-		} else if frameIn.Type == FrameHTDP && frameOut.Type == FrameCDN {
-			steps = append(steps, transformStep{from: epsgIn, to: 7912, via: "htdp2ellipsoid"})
-			steps = append(steps, transformStep{from: 7912, to: epsgOut, via: "ellipsoid2cdn"})
-		}
-		if frameOut.Type == FrameTidal {
-			steps = append(steps, transformStep{from: 7912, to: 5714, via: "ellipsoid2msl"})
-			steps = append(steps, transformStep{from: 5714, to: epsgOut, via: "msl2tidal"})
-		}
-
-	case frameIn.Type == FrameCDN && frameOut.Type == FrameHTDP:
-		steps = append(steps, transformStep{from: epsgIn, to: 7912, via: "cdn2ellipsoid"})
-		steps = append(steps, transformStep{from: 7912, to: epsgOut, via: "ellipsoid2htdp"})
+func planSteps(epsgIn, epsgOut int, frameIn, frameOut *Frame) ([]transformStep, error) {
+	if frameIn.Type == FrameTidal && epsgIn != mslEPSG {
+		return nil, fmt.Errorf("no offset grid available for tidal datum EPSG %d (%s): only MSL (%d) is supported", epsgIn, frameIn.Name, mslEPSG)
+	}
+	if frameOut.Type == FrameTidal && epsgOut != mslEPSG {
+		return nil, fmt.Errorf("no offset grid available for tidal datum EPSG %d (%s): only MSL (%d) is supported", epsgOut, frameOut.Name, mslEPSG)
 	}
 
-	return steps
+	switch {
+	case frameIn.Type == FrameTidal && frameOut.Type == FrameCDN:
+		return []transformStep{{from: epsgIn, to: epsgOut, via: "msl2cdn"}}, nil
+
+	case frameIn.Type == FrameCDN && frameOut.Type == FrameTidal:
+		return []transformStep{{from: epsgIn, to: epsgOut, via: "cdn2msl"}}, nil
+
+	case frameIn.Type == FrameCDN && frameOut.Type == FrameCDN:
+		return []transformStep{{from: epsgIn, to: epsgOut, via: "cdn2cdn"}}, nil
+
+	case frameIn.Type == FrameHTDP && frameOut.Type == FrameHTDP:
+		return []transformStep{{from: epsgIn, to: epsgOut, via: "htdp2htdp"}}, nil
+
+	case frameIn.Type == FrameHTDP && frameOut.Type == FrameCDN:
+		return []transformStep{
+			{from: epsgIn, to: ellipsoidEPSG, via: "htdp2ellipsoid"},
+			{from: ellipsoidEPSG, to: epsgOut, via: "ellipsoid2cdn"},
+		}, nil
+
+	case frameIn.Type == FrameCDN && frameOut.Type == FrameHTDP:
+		return []transformStep{
+			{from: epsgIn, to: ellipsoidEPSG, via: "cdn2ellipsoid"},
+			{from: ellipsoidEPSG, to: epsgOut, via: "ellipsoid2htdp"},
+		}, nil
+
+	case frameIn.Type == FrameHTDP && frameOut.Type == FrameTidal:
+		return []transformStep{
+			{from: epsgIn, to: ellipsoidEPSG, via: "htdp2ellipsoid"},
+			{from: ellipsoidEPSG, to: epsgOut, via: "ellipsoid2msl"},
+		}, nil
+
+	case frameIn.Type == FrameTidal && frameOut.Type == FrameHTDP:
+		return []transformStep{
+			{from: epsgIn, to: ellipsoidEPSG, via: "msl2ellipsoid"},
+			{from: ellipsoidEPSG, to: epsgOut, via: "ellipsoid2htdp"},
+		}, nil
+	}
+
+	return nil, fmt.Errorf("no transform path from EPSG %d to %d", epsgIn, epsgOut)
 }
 
-func (vt *VerticalTransform) executeStep(step transformStep, currentEpsg int) []float64 {
+func (vt *VerticalTransform) executeStep(step transformStep) ([]float64, float64, error) {
 	switch step.via {
-	case "tidal2msl":
-		return vt.computeGeoidGrid(geoid.EGM96)
-	case "msl2tidal":
-		return invertGrid(vt.computeGeoidGrid(geoid.EGM96))
-	case "msl2geoid":
-		return vt.computeGeoidGrid(geoid.EGM96)
-	case "geoid2msl":
-		return invertGrid(vt.computeGeoidGrid(geoid.EGM96))
-	case "cdn2cdn":
-		return vt.cdnTransform(step.from, step.to)
-	case "cdn2ellipsoid":
-		return invertGrid(vt.computeGeoidGrid(EPSGToVerticalDatum(step.from)))
-	case "ellipsoid2cdn":
-		return vt.computeGeoidGrid(EPSGToVerticalDatum(step.to))
 	case "msl2ellipsoid":
-		return vt.computeGeoidGrid(geoid.EGM96)
+		g, err := vt.computeGeoidGrid(mslModel, step.via)
+		if err != nil {
+			return nil, 0, err
+		}
+		return invertGrid(g), geoidUncertainty(mslModel), nil
 	case "ellipsoid2msl":
-		return invertGrid(vt.computeGeoidGrid(geoid.EGM96))
+		g, err := vt.computeGeoidGrid(mslModel, step.via)
+		if err != nil {
+			return nil, 0, err
+		}
+		return g, geoidUncertainty(mslModel), nil
+	case "msl2cdn":
+		toModel, err := vt.endpointModel(step.to, vt.opts.GeoidOut)
+		if err != nil {
+			return nil, 0, err
+		}
+		g, err := vt.differenceGrid(mslModel, toModel, step.via)
+		if err != nil {
+			return nil, 0, err
+		}
+		return g, geoidUncertainty(mslModel, toModel), nil
+	case "cdn2msl":
+		fromModel, err := vt.endpointModel(step.from, vt.opts.GeoidIn)
+		if err != nil {
+			return nil, 0, err
+		}
+		g, err := vt.differenceGrid(fromModel, mslModel, step.via)
+		if err != nil {
+			return nil, 0, err
+		}
+		return g, geoidUncertainty(fromModel, mslModel), nil
+	case "cdn2cdn":
+		return vt.cdnTransform(step.from, step.to, step.via)
+	case "cdn2ellipsoid":
+		fromModel, err := vt.endpointModel(step.from, vt.opts.GeoidIn)
+		if err != nil {
+			return nil, 0, err
+		}
+		g, err := vt.computeGeoidGrid(fromModel, step.via)
+		if err != nil {
+			return nil, 0, err
+		}
+		return invertGrid(g), geoidUncertainty(fromModel), nil
+	case "ellipsoid2cdn":
+		toModel, err := vt.endpointModel(step.to, vt.opts.GeoidOut)
+		if err != nil {
+			return nil, 0, err
+		}
+		g, err := vt.computeGeoidGrid(toModel, step.via)
+		if err != nil {
+			return nil, 0, err
+		}
+		return g, geoidUncertainty(toModel), nil
 	case "htdp2htdp":
-		return vt.htdpGrid(step.from, step.to)
+		return vt.htdpStepGrid(step.from, step.to)
 	case "htdp2ellipsoid":
-		return invertGrid(vt.htdpGrid(step.from, 7912))
+		return vt.htdpStepGrid(step.from, ellipsoidEPSG)
 	case "ellipsoid2htdp":
-		return vt.htdpGrid(7912, step.to)
+		return vt.htdpStepGrid(ellipsoidEPSG, step.to)
 	default:
-		return make([]float64, vt.xCount*vt.yCount)
+		return nil, 0, fmt.Errorf("unknown transform step %q", step.via)
 	}
 }
 
@@ -186,37 +263,64 @@ func invertGrid(grid []float64) []float64 {
 	return out
 }
 
-func (vt *VerticalTransform) cdnTransform(fromEPSG, toEPSG int) []float64 {
-	n := vt.xCount * vt.yCount
-	grid := make([]float64, n)
-	model := geoid.EGM96
-
-	if fromEPSG == 3855 || fromEPSG == 5773 || fromEPSG == 5798 {
-		model = EPSGToVerticalDatum(fromEPSG)
+func (vt *VerticalTransform) differenceGrid(fromModel, toModel geoid.VerticalDatum, stage string) ([]float64, error) {
+	fromGrid, err := vt.computeGeoidGrid(fromModel, stage)
+	if err != nil {
+		return nil, err
 	}
-	if toEPSG == 3855 || toEPSG == 5773 || toEPSG == 5798 {
-		toModel := EPSGToVerticalDatum(toEPSG)
-		if toModel != geoid.HAE {
-			g := geoid.NewGeoid(toModel, true)
-			if g != nil {
-				geoGrid := vt.computeGeoidGrid(toModel)
-				fromGrid := vt.computeGeoidGrid(model)
-				for i := range grid {
-					grid[i] = geoGrid[i] - fromGrid[i]
-				}
-				return grid
-			}
-		}
+	toGrid, err := vt.computeGeoidGrid(toModel, stage)
+	if err != nil {
+		return nil, err
 	}
-
-	return vt.computeGeoidGrid(model)
+	grid := make([]float64, vt.xCount*vt.yCount)
+	for i := range grid {
+		grid[i] = toGrid[i] - fromGrid[i]
+	}
+	return grid, nil
 }
 
-func (vt *VerticalTransform) htdpGrid(fromEPSG, toEPSG int) []float64 {
+func (vt *VerticalTransform) endpointModel(epsg int, override string) (geoid.VerticalDatum, error) {
+	if override != "" {
+		if m := geoid.VerticalDatumFromString(override); m != geoid.HAE && m != geoid.UNKNOWN {
+			return m, nil
+		}
+	}
+	m := EPSGToVerticalDatum(epsg)
+	if m == geoid.HAE || m == geoid.UNKNOWN {
+		return m, fmt.Errorf("cannot resolve geoid model for vertical datum EPSG %d", epsg)
+	}
+	return m, nil
+}
+
+func (vt *VerticalTransform) cdnTransform(fromEPSG, toEPSG int, stage string) ([]float64, float64, error) {
+	fromModel, err := vt.endpointModel(fromEPSG, vt.opts.GeoidIn)
+	if err != nil {
+		return nil, 0, err
+	}
+	toModel, err := vt.endpointModel(toEPSG, vt.opts.GeoidOut)
+	if err != nil {
+		return nil, 0, err
+	}
+	grid, err := vt.differenceGrid(fromModel, toModel, stage)
+	if err != nil {
+		return nil, 0, err
+	}
+	return grid, geoidUncertainty(fromModel, toModel), nil
+}
+
+func (vt *VerticalTransform) htdpStepGrid(fromEPSG, toEPSG int) ([]float64, float64, error) {
+	grid, err := vt.htdpGrid(fromEPSG, toEPSG)
+	if err != nil {
+		return nil, 0, err
+	}
+	return invertGrid(grid), 0, nil
+}
+
+func (vt *VerticalTransform) htdpGrid(fromEPSG, toEPSG int) ([]float64, error) {
 	frameIn := GetFrameByEPSG(fromEPSG)
 	frameOut := GetFrameByEPSG(toEPSG)
 	if frameIn == nil || frameOut == nil {
-		return make([]float64, vt.xCount*vt.yCount)
+		return nil, fmt.Errorf("unknown htdp frame: EPSG %d or %d", fromEPSG, toEPSG)
 	}
 
 	gridDef := [6]float64{
@@ -241,38 +345,63 @@ func (vt *VerticalTransform) htdpGrid(fromEPSG, toEPSG int) []float64 {
 }
 
 func computeGeoidGrid(region *dem.Region, model geoid.VerticalDatum) []float64 {
-	g := geoid.NewGeoid(model, true)
+	g, _ := computeGeoidGridProgress(region, model, model.ToString(), nil, nil)
+	return g
+}
+
+func computeGeoidGridProgress(region *dem.Region, model geoid.VerticalDatum, stage string, prog dem.ProgressFunc, ctx context.Context) ([]float64, error) {
+	g := getGeoid(model, true)
 	n := region.XSize * region.YSize
 	grid := make([]float64, n)
 	noData := dem.DefaultNoData
 
-	var srs4326 geo.Proj = geo.NewProj("EPSG:4326")
-	needTransform := region.SRS() != nil && !region.SRS().Eq(srs4326)
-
+	gt := region.GeoTransform()
+	pts := make([]vec2.T, n)
+	i := 0
 	for y := 0; y < region.YSize; y++ {
 		for x := 0; x < region.XSize; x++ {
-			geoX := region.BBox().Min[0] + float64(x)*region.XRes
-			geoY := region.BBox().Min[1] + float64(y)*region.YRes
-
-			lon, lat := geoX, geoY
-			if needTransform {
-				pts := region.SRS().TransformTo(srs4326, []vec2.T{{geoX, geoY}})
-				if len(pts) > 0 {
-					lon, lat = pts[0][0], pts[0][1]
-				}
+			pts[i] = vec2.T{
+				gt[0] + (float64(x)+0.5)*gt[1] + (float64(y)+0.5)*gt[2],
+				gt[3] + (float64(x)+0.5)*gt[4] + (float64(y)+0.5)*gt[5],
 			}
+			i++
+		}
+	}
 
-			und := g.GetHeight(lat, lon)
+	var srs4326 geo.Proj = geo.NewProj("EPSG:4326")
+	needTransform := region.SRS() != nil && !region.SRS().Eq(srs4326)
+	if needTransform {
+		pts = region.SRS().TransformTo(srs4326, pts)
+	}
+
+	dem.ReportProgress(prog, stage, 0, region.YSize)
+	for y := 0; y < region.YSize; y++ {
+		if err := dem.CheckCtx(ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", stage, err)
+		}
+		for x := 0; x < region.XSize; x++ {
+			p := pts[y*region.XSize+x]
+			und := g.GetHeight(p[1], p[0])
 			if math.IsNaN(und) || math.IsInf(und, 0) {
 				grid[y*region.XSize+x] = noData
 			} else {
 				grid[y*region.XSize+x] = und
 			}
 		}
+		dem.ReportProgress(prog, stage, y+1, region.YSize)
 	}
-	return grid
+	dem.ReportProgress(prog, stage, region.YSize, region.YSize)
+	return grid, nil
 }
 
-func (vt *VerticalTransform) computeGeoidGrid(model geoid.VerticalDatum) []float64 {
-	return computeGeoidGrid(vt.opts.Region, model)
+func (vt *VerticalTransform) computeGeoidGrid(model geoid.VerticalDatum, stage string) ([]float64, error) {
+	if g, ok := vt.geoidGrids[model]; ok {
+		return g, nil
+	}
+	g, err := computeGeoidGridProgress(vt.opts.Region, model, stage, vt.opts.Progress, vt.opts.Ctx)
+	if err != nil {
+		return nil, err
+	}
+	vt.geoidGrids[model] = g
+	return g, nil
 }

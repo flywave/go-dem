@@ -7,23 +7,33 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/flywave/go-dem"
+	"github.com/flywave/go-dem/waffle"
 	"github.com/flywave/go-geo"
 	"github.com/flywave/go3d/float64/vec2"
 )
 
 type XYZPoint struct {
-	X, Y, Z float64
+	X, Y, Z   float64
 	Intensity float64
 	Quality   float64
 }
 
 type XYZFile struct {
-	Points  []XYZPoint
-	Bounds  vec2.Rect
-	SRS     geo.Proj
-	NoData  float64
+	Points []XYZPoint
+	Bounds vec2.Rect
+	SRS    geo.Proj
+	NoData float64
+
+	mu            sync.Mutex
+	transformed   []vec2.T
+	transformedTo geo.Proj
+}
+
+func isFinite(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0)
 }
 
 func ParseXYZFile(path string, srs geo.Proj) (*XYZFile, error) {
@@ -65,6 +75,9 @@ func ParseXYZFile(path string, srs geo.Proj) (*XYZFile, error) {
 		if err != nil {
 			continue
 		}
+		if !isFinite(x) || !isFinite(y) || !isFinite(z) {
+			continue
+		}
 
 		pt := XYZPoint{X: x, Y: y, Z: z}
 		if len(parts) >= 4 {
@@ -89,54 +102,77 @@ func ParseXYZFile(path string, srs geo.Proj) (*XYZFile, error) {
 		}
 	}
 
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("read xyz: %v", err)
+	}
+
+	if len(xf.Points) == 0 {
+		return nil, fmt.Errorf("no valid points in xyz file: %s", path)
+	}
+
 	xf.Bounds = vec2.Rect{
 		Min: vec2.T{minX, minY},
 		Max: vec2.T{maxX, maxY},
 	}
 
-	return xf, scanner.Err()
+	return xf, nil
 }
 
 func (xf *XYZFile) ToDEM(region *dem.Region, method string) ([]float64, error) {
-	pts := make([]vec2.T, len(xf.Points))
-	zs := make([]float64, len(xf.Points))
-
-	needTransform := xf.SRS != nil && region.SRS() != nil &&
-		!xf.SRS.Eq(region.SRS())
-
-	for i, p := range xf.Points {
-		if needTransform {
-			transformed := xf.SRS.TransformTo(region.SRS(), []vec2.T{{p.X, p.Y}})
-			if len(transformed) > 0 {
-				pts[i] = transformed[0]
-			} else {
-				pts[i] = vec2.T{p.X, p.Y}
-			}
-		} else {
-			pts[i] = vec2.T{p.X, p.Y}
-		}
-		zs[i] = p.Z
+	if len(xf.Points) == 0 {
+		return nil, fmt.Errorf("no points in xyz file")
 	}
 
-	_ = method
-	gt := region.GeoTransform()
-	w, h := region.XSize, region.YSize
-	noData := xf.NoData
-
-	result := make([]float64, w*h)
-	for i := range result {
-		result[i] = noData
+	pts, err := xf.projectedPoints(region)
+	if err != nil {
+		return nil, err
 	}
 
+	w, err := waffle.New(dem.InterpMethod(strings.TrimSpace(method)))
+	if err != nil {
+		return nil, fmt.Errorf("toDEM: %v", err)
+	}
+
+	points := make([]waffle.Point, len(pts))
 	for i, pt := range pts {
-		px := int(math.Round((pt[0] - gt[0]) / gt[1]))
-		py := int(math.Round((pt[1] - gt[3]) / gt[5]))
-		if px >= 0 && px < w && py >= 0 && py < h {
-			result[py*w+px] = zs[i]
+		points[i] = waffle.Point{Position: pt, Z: xf.Points[i].Z}
+	}
+
+	result, err := w.Run(points, &waffle.Options{
+		Region: region,
+		NoData: xf.NoData,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("toDEM: %v", err)
+	}
+
+	return result.DEM, nil
+}
+
+func (xf *XYZFile) projectedPoints(region *dem.Region) ([]vec2.T, error) {
+	xf.mu.Lock()
+	defer xf.mu.Unlock()
+
+	target := region.SRS()
+	if xf.transformed != nil && len(xf.transformed) == len(xf.Points) && sameSRS(xf.transformedTo, target) {
+		return xf.transformed, nil
+	}
+
+	pts := make([]vec2.T, len(xf.Points))
+	for i, p := range xf.Points {
+		pts[i] = vec2.T{p.X, p.Y}
+	}
+
+	if !isNilProj(xf.SRS) && !isNilProj(target) && !xf.SRS.Eq(target) {
+		pts = xf.SRS.TransformTo(target, pts)
+		if len(pts) != len(xf.Points) {
+			return nil, fmt.Errorf("coordinate transform returned %d of %d points", len(pts), len(xf.Points))
 		}
 	}
 
-	return result, nil
+	xf.transformed = pts
+	xf.transformedTo = target
+	return pts, nil
 }
 
 func (xf *XYZFile) PointCount() int {

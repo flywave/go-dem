@@ -103,7 +103,7 @@ func leastSquaresPlane(points []Point3D) Plane {
 
 	det := sxx*syy - sxy*sxy
 	if math.Abs(det) < 1e-12 {
-		return Plane{}
+		return Plane{C: sumZ / float64(n)}
 	}
 	a := (syy*sxz - sxy*syz) / det
 	b := (sxx*syz - sxy*sxz) / det

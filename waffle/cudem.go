@@ -30,6 +30,9 @@ func (cw *cudemWaffle) Run(points []Point, opts *Options) (*Result, error) {
 	if len(points) == 0 {
 		return nil, fmt.Errorf("no data points")
 	}
+	if opts == nil || opts.Region == nil {
+		return nil, fmt.Errorf("region is required")
+	}
 
 	region := opts.Region
 	if region.XSize <= 0 || region.YSize <= 0 {
@@ -71,8 +74,24 @@ func (cw *cudemWaffle) Run(points []Point, opts *Options) (*Result, error) {
 		result[i] = weightedCell{weight: 0, count: 0}
 	}
 
+	localCounts := make([]int, width*height)
+	for _, pt := range pts {
+		px := int(math.Floor((pt[0] - gt[0]) / region.XRes))
+		py := int(math.Floor((gt[3] - pt[1]) / region.XRes))
+		if px >= 0 && px < width && py >= 0 && py < height {
+			localCounts[py*width+px]++
+		}
+	}
+
+	total := len(levels)
+	if err := startRun(opts, cw.Name(), total); err != nil {
+		return nil, err
+	}
 	sort.Float64s(levels)
 	for li := len(levels) - 1; li >= 0; li-- {
+		if err := dem.CheckCtx(opts.Ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", cw.Name(), err)
+		}
 		res := levels[li]
 		scale := int(math.Round(res / region.XRes))
 		if scale < 1 {
@@ -87,7 +106,7 @@ func (cw *cudemWaffle) Run(points []Point, opts *Options) (*Result, error) {
 
 		for i, pt := range pts {
 			gx := int(math.Floor((pt[0] - gt[0]) / res))
-			gy := int(math.Floor((pt[1] - gt[3]) / res))
+			gy := int(math.Floor((gt[3] - pt[1]) / res))
 			if gx < 0 || gx >= gw || gy < 0 || gy >= gh {
 				continue
 			}
@@ -108,7 +127,7 @@ func (cw *cudemWaffle) Run(points []Point, opts *Options) (*Result, error) {
 					continue
 				}
 				geoX := gt[0] + (float64(gx)+0.5)*res
-				geoY := gt[3] + (float64(gy)+0.5)*res
+				geoY := gt[3] - (float64(gy)+0.5)*res
 				q := vec2.T{geoX, geoY}
 				idxs, dists := kdtree.RadiusSearch(q, searchR)
 				if len(idxs) < 3 {
@@ -155,13 +174,13 @@ func (cw *cudemWaffle) Run(points []Point, opts *Options) (*Result, error) {
 					continue
 				}
 
-				geoX := gt[0] + float64(x)*gt[1]
-				geoY := gt[3] + float64(y)*gt[5]
-				q := vec2.T{geoX, geoY}
-				localIdxs, _ := kdtree.RadiusSearch(q, res)
-				localCount := len(localIdxs)
+				localCount := localCounts[idx]
 
-				if localCount >= 3 && res <= region.XRes*1.5 {
+				if res <= region.XRes*1.5 && localCount >= 3 {
+					current := &result[idx]
+					current.mean = cell.mean
+					current.weight = cell.weight + float64(localCount)
+					current.count = cell.count
 					continue
 				}
 
@@ -183,7 +202,9 @@ func (cw *cudemWaffle) Run(points []Point, opts *Options) (*Result, error) {
 				}
 			}
 		}
+		dem.ReportProgress(opts.Progress, cw.Name(), total-li, total)
 	}
+	finishRun(opts, cw.Name(), total)
 
 	demData := make([]float64, width*height)
 	for i := range demData {

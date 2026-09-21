@@ -1,6 +1,7 @@
 package grits
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/flywave/go-dem"
@@ -20,7 +21,15 @@ func init() {
 }
 
 func (f *bilateralFilter) Run(data []float64, region *dem.Region, opts *Options) ([]float64, error) {
-	return applyBilateralFilter(data, region.XSize, region.YSize, opts)
+	if err := startFilter(opts, f.Name(), region.YSize); err != nil {
+		return nil, err
+	}
+	result, err := applyBilateralFilter(data, region.XSize, region.YSize, opts, f.Name())
+	if err != nil {
+		return nil, err
+	}
+	finishFilter(opts, f.Name(), region.YSize)
+	return result, nil
 }
 
 func (f *denoiseFilter) Run(data []float64, region *dem.Region, opts *Options) ([]float64, error) {
@@ -29,15 +38,28 @@ func (f *denoiseFilter) Run(data []float64, region *dem.Region, opts *Options) (
 		method = "median"
 	}
 
+	if err := startFilter(opts, f.Name(), region.YSize); err != nil {
+		return nil, err
+	}
+	var (
+		result []float64
+		err    error
+	)
 	switch method {
 	case "bilateral":
-		return applyBilateralFilter(data, region.XSize, region.YSize, opts)
+		result, err = applyBilateralFilter(data, region.XSize, region.YSize, opts, f.Name())
 	default:
-		return medianFilter2D(data, region.XSize, region.YSize, opts.KernelSize, opts.GetNoData()), nil
+		kSize := normalizeKernelSize(opts.KernelSize)
+		result, err = medianFilter2D(data, region.XSize, region.YSize, kSize, opts.GetNoData(), opts, f.Name())
 	}
+	if err != nil {
+		return nil, err
+	}
+	finishFilter(opts, f.Name(), region.YSize)
+	return result, nil
 }
 
-func applyBilateralFilter(data []float64, w, h int, opts *Options) ([]float64, error) {
+func applyBilateralFilter(data []float64, w, h int, opts *Options, stage string) ([]float64, error) {
 	sigmaSpatial := opts.Sigma
 	if sigmaSpatial <= 0 {
 		sigmaSpatial = 1.0
@@ -58,6 +80,9 @@ func applyBilateralFilter(data []float64, w, h int, opts *Options) ([]float64, e
 	spatialKernel := make1DGaussianKernel(sigmaSpatial, radius)
 
 	for y := 0; y < h; y++ {
+		if err := dem.CheckCtx(opts.Ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", stage, err)
+		}
 		for x := 0; x < w; x++ {
 			idx := y*w + x
 			centerVal := data[idx]
@@ -90,6 +115,7 @@ func applyBilateralFilter(data []float64, w, h int, opts *Options) ([]float64, e
 				result[idx] = sumValue / sumWeight
 			}
 		}
+		dem.ReportProgress(opts.Progress, stage, y+1, h)
 	}
 
 	return result, nil

@@ -103,10 +103,28 @@ func TestGaussianBlur_NoDataPreserved(t *testing.T) {
 		t.Fatalf("error: %v", err)
 	}
 	if res[3*w+3] != nd {
-		t.Logf("noData neighbor got filled: %.2f", res[3*w+3])
+		t.Errorf("noData pixel got filled: %.2f", res[3*w+3])
 	}
-	if res[0] == nd || math.IsNaN(res[0]) {
-		t.Log("gaussian: valid pixel should remain valid")
+	if res[3*w+4] != nd {
+		t.Errorf("noData pixel got filled: %.2f", res[3*w+4])
+	}
+	if math.Abs(res[0]-100) > 1e-6 {
+		t.Errorf("valid pixel polluted by noData: expected 100, got %.2f", res[0])
+	}
+	if math.Abs(res[2*w+3]-100) > 1e-6 {
+		t.Errorf("valid neighbor of noData polluted: expected 100, got %.2f", res[2*w+3])
+	}
+
+	b := &blurFilter{}
+	res2, err := b.Run(data, reg, &Options{Sigma: 1.5, NoData: &nd})
+	if err != nil {
+		t.Fatalf("blur error: %v", err)
+	}
+	if res2[3*w+3] != nd {
+		t.Errorf("blur: noData pixel got filled: %.2f", res2[3*w+3])
+	}
+	if math.Abs(res2[0]-100) > 1e-6 {
+		t.Errorf("blur: valid pixel polluted by noData: expected 100, got %.2f", res2[0])
 	}
 }
 

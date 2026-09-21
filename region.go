@@ -27,8 +27,7 @@ func NewRegionFromBBox(minX, minY, maxX, maxY float64, srs geo.Proj, xRes, yRes 
 	bbox := vec2d.Rect{Min: vec2d.T{minX, minY}, Max: vec2d.T{maxX, maxY}}
 	extent := &geo.MapExtent{BBox: bbox, Srs: srs}
 
-	xSize := int(math.Round((maxX - minX) / xRes))
-	ySize := int(math.Round((maxY - minY) / yRes))
+	xSize, ySize := sizesFor(bbox, xRes, yRes)
 
 	return &Region{
 		Extent: extent,
@@ -39,6 +38,14 @@ func NewRegionFromBBox(minX, minY, maxX, maxY float64, srs geo.Proj, xRes, yRes 
 	}
 }
 
+func sizesFor(bbox vec2d.Rect, xRes, yRes float64) (int, int) {
+	if xRes <= 0 || yRes <= 0 {
+		return 0, 0
+	}
+	return int(math.Round((bbox.Max[0] - bbox.Min[0]) / xRes)),
+		int(math.Round((bbox.Max[1] - bbox.Min[1]) / yRes))
+}
+
 func NewRegionFromString(regionStr string, srs geo.Proj, xRes, yRes float64) (*Region, error) {
 	parts := strings.FieldsFunc(regionStr, func(r rune) bool {
 		return r == '/' || r == ',' || r == ' '
@@ -46,11 +53,15 @@ func NewRegionFromString(regionStr string, srs geo.Proj, xRes, yRes float64) (*R
 	if len(parts) < 4 {
 		return nil, fmt.Errorf("invalid region format, expected xmin/xmax/ymin/ymax: %s", regionStr)
 	}
-	minX, _ := strconv.ParseFloat(parts[0], 64)
-	maxX, _ := strconv.ParseFloat(parts[1], 64)
-	minY, _ := strconv.ParseFloat(parts[2], 64)
-	maxY, _ := strconv.ParseFloat(parts[3], 64)
-	return NewRegionFromBBox(minX, minY, maxX, maxY, srs, xRes, yRes), nil
+	coords := make([]float64, 4)
+	for i := 0; i < 4; i++ {
+		v, err := strconv.ParseFloat(parts[i], 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid coordinate %q in region %s", parts[i], regionStr)
+		}
+		coords[i] = v
+	}
+	return NewRegionFromBBox(coords[0], coords[2], coords[1], coords[3], srs, xRes, yRes), nil
 }
 
 func (r *Region) BBox() vec2d.Rect {
@@ -72,6 +83,12 @@ func (r *Region) GeoTransform() [6]float64 {
 	}
 }
 
+func (r *Region) PixelCenterGeo(x, y int) (float64, float64) {
+	gt := r.GeoTransform()
+	return gt[0] + (float64(x)+0.5)*gt[1] + (float64(y)+0.5)*gt[2],
+		gt[3] + (float64(x)+0.5)*gt[4] + (float64(y)+0.5)*gt[5]
+}
+
 func (r *Region) TransformTo(srs geo.Proj) *Region {
 	newBBox := r.Extent.BBoxFor(srs)
 	newExtent := &geo.MapExtent{BBox: newBBox, Srs: srs}
@@ -79,14 +96,26 @@ func (r *Region) TransformTo(srs geo.Proj) *Region {
 	xRes := r.XRes
 	yRes := r.YRes
 
-	if srs != nil && !srs.IsLatLong() && r.SRS().IsLatLong() {
-		midY := (newBBox.Min[1] + newBBox.Max[1]) / 2
-		midYRad := midY * math.Pi / 180
-		cosLat := math.Cos(midYRad)
-		if cosLat > 0 {
-			xRes = r.XRes * 111320 * cosLat
+	if !isNilProj(srs) && !isNilProj(r.SRS()) {
+		srcLatLong := r.SRS().IsLatLong()
+		dstLatLong := srs.IsLatLong()
+		switch {
+		case !dstLatLong && srcLatLong:
+			b := r.Extent.BBox
+			midY := (b.Min[1] + b.Max[1]) / 2
+			cosLat := math.Cos(midY * math.Pi / 180)
+			if cosLat > 0 {
+				xRes = r.XRes * 111320 * cosLat
+			}
+			yRes = r.YRes * 111320
+		case dstLatLong && !srcLatLong:
+			midY := (newBBox.Min[1] + newBBox.Max[1]) / 2
+			cosLat := math.Cos(midY * math.Pi / 180)
+			if cosLat > 0 {
+				xRes = r.XRes / (111320 * cosLat)
+			}
+			yRes = r.YRes / 111320
 		}
-		yRes = r.YRes * 111320
 	}
 
 	xSize := int(math.Round((newBBox.Max[0] - newBBox.Min[0]) / xRes))
@@ -163,6 +192,7 @@ func (r *Region) Buffer(xBuf, yBuf float64) *Region {
 	n.Extent.BBox.Max[0] += xBuf
 	n.Extent.BBox.Min[1] -= yBuf
 	n.Extent.BBox.Max[1] += yBuf
+	n.XSize, n.YSize = sizesFor(n.Extent.BBox, n.XRes, n.YRes)
 	return n
 }
 
@@ -180,6 +210,7 @@ func (r *Region) Intersection(other *Region) *Region {
 	n.Extent.BBox.Max[0] = math.Min(b.Max[0], ob.Max[0])
 	n.Extent.BBox.Min[1] = math.Max(b.Min[1], ob.Min[1])
 	n.Extent.BBox.Max[1] = math.Min(b.Max[1], ob.Max[1])
+	n.XSize, n.YSize = sizesFor(n.Extent.BBox, n.XRes, n.YRes)
 	return n
 }
 
@@ -191,6 +222,7 @@ func (r *Region) Union(other *Region) *Region {
 	n.Extent.BBox.Max[0] = math.Max(b.Max[0], ob.Max[0])
 	n.Extent.BBox.Min[1] = math.Min(b.Min[1], ob.Min[1])
 	n.Extent.BBox.Max[1] = math.Max(b.Max[1], ob.Max[1])
+	n.XSize, n.YSize = sizesFor(n.Extent.BBox, n.XRes, n.YRes)
 	return n
 }
 
@@ -224,14 +256,27 @@ func (r *Region) SrcWin(gt [6]float64, xSize, ySize int) (int, int, int, int) {
 	if pyMax > ySize {
 		pyMax = ySize
 	}
-	return pxMin, pyMin, pxMax - pxMin, pyMax - pyMin
+	winW := pxMax - pxMin
+	if winW < 0 {
+		winW = 0
+	}
+	winH := pyMax - pyMin
+	if winH < 0 {
+		winH = 0
+	}
+	return pxMin, pyMin, winW, winH
 }
 
 func (r *Region) GeoTransformFromCount(xCount, yCount int) [6]float64 {
 	b := r.Extent.BBox
-	xInc := (b.Max[0] - b.Min[0]) / float64(xCount)
-	yInc := (b.Min[1] - b.Max[1]) / float64(yCount)
-	return [6]float64{b.Min[0], xInc, 0, b.Max[1], 0, yInc}
+	gt := [6]float64{b.Min[0], 0, 0, b.Max[1], 0, 0}
+	if xCount > 0 {
+		gt[1] = (b.Max[0] - b.Min[0]) / float64(xCount)
+	}
+	if yCount > 0 {
+		gt[5] = (b.Min[1] - b.Max[1]) / float64(yCount)
+	}
+	return gt
 }
 
 func (r *Region) Format(fmtStr string) string {
@@ -290,6 +335,7 @@ func (r *Region) Chunk(xChunks, yChunks int) []*Region {
 			sub.Extent.BBox.Max[0] = b.Min[0] + float64(xi+1)*xStep
 			sub.Extent.BBox.Min[1] = b.Min[1] + float64(yi)*yStep
 			sub.Extent.BBox.Max[1] = b.Min[1] + float64(yi+1)*yStep
+			sub.XSize, sub.YSize = sizesFor(sub.Extent.BBox, sub.XRes, sub.YRes)
 			chunks = append(chunks, sub)
 		}
 	}

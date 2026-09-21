@@ -1,11 +1,14 @@
 package datalist
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/flywave/flywave-gdal"
 	"github.com/flywave/go-dem"
 	"github.com/flywave/go-geo"
 )
@@ -13,18 +16,18 @@ import (
 type DataSourceType string
 
 const (
-	SourceRaster  DataSourceType = "raster"
-	SourcePoint   DataSourceType = "pointcloud"
-	SourceVector  DataSourceType = "vector"
+	SourceRaster DataSourceType = "raster"
+	SourcePoint  DataSourceType = "pointcloud"
+	SourceVector DataSourceType = "vector"
 )
 
 type DataEntry struct {
-	Path     string
-	Type     DataSourceType
-	Weight   float64
+	Path        string
+	Type        DataSourceType
+	Weight      float64
 	Uncertainty float64
-	SRS      geo.Proj
-	Priority int
+	SRS         geo.Proj
+	Priority    int
 }
 
 type DataList struct {
@@ -73,11 +76,48 @@ const (
 	StackModeWeight StackMode = "weight"
 )
 
+func isNilProj(p geo.Proj) bool {
+	if p == nil {
+		return true
+	}
+	sp, ok := p.(*geo.SRSProj4)
+	return ok && sp == nil
+}
+
+func sameSRS(a, b geo.Proj) bool {
+	if isNilProj(a) || isNilProj(b) {
+		return isNilProj(a) && isNilProj(b)
+	}
+	return a.Eq(b)
+}
+
+func (s *Stack) takeFrom(other *Stack, i int) {
+	s.Elevation[i] = other.Elevation[i]
+	s.Count[i] = other.Count[i]
+	s.Weight[i] = other.Weight[i]
+	s.Uncertainty[i] = other.Uncertainty[i]
+	s.SourceID[i] = other.SourceID[i]
+}
+
 func (s *Stack) Merge(other *Stack, mode StackMode) error {
 	if s.Region.XSize != other.Region.XSize || s.Region.YSize != other.Region.YSize {
 		return fmt.Errorf("stack size mismatch: %dx%d vs %dx%d",
 			s.Region.XSize, s.Region.YSize,
 			other.Region.XSize, other.Region.YSize)
+	}
+	if s.Region.BBox() != other.Region.BBox() {
+		return fmt.Errorf("stack bounds mismatch: %v/%v vs %v/%v",
+			s.Region.BBox().Min, s.Region.BBox().Max,
+			other.Region.BBox().Min, other.Region.BBox().Max)
+	}
+	if !sameSRS(s.Region.SRS(), other.Region.SRS()) {
+		return fmt.Errorf("stack SRS mismatch")
+	}
+
+	switch mode {
+	case StackModeMean, StackModeMin, StackModeMax, StackModeFirst, StackModeLast, StackModeWeight:
+	default:
+		return fmt.Errorf("unknown stack mode: %s", mode)
 	}
 
 	for i := range s.Elevation {
@@ -88,11 +128,7 @@ func (s *Stack) Merge(other *Stack, mode StackMode) error {
 
 		currentVal := s.Elevation[i]
 		if currentVal == s.NoData || math.IsNaN(currentVal) {
-			s.Elevation[i] = otherVal
-			s.Count[i] = other.Count[i]
-			s.Weight[i] = other.Weight[i]
-			s.Uncertainty[i] = other.Uncertainty[i]
-			s.SourceID[i] = other.SourceID[i]
+			s.takeFrom(other, i)
 			continue
 		}
 
@@ -103,23 +139,26 @@ func (s *Stack) Merge(other *Stack, mode StackMode) error {
 				s.Elevation[i] = (currentVal*s.Count[i] + otherVal*other.Count[i]) / totalCount
 				s.Count[i] = totalCount
 			}
+			s.Uncertainty[i] = math.Sqrt(s.Uncertainty[i]*s.Uncertainty[i] + other.Uncertainty[i]*other.Uncertainty[i])
 		case StackModeMin:
 			if otherVal < currentVal {
-				s.Elevation[i] = otherVal
+				s.takeFrom(other, i)
 			}
 		case StackModeMax:
 			if otherVal > currentVal {
-				s.Elevation[i] = otherVal
+				s.takeFrom(other, i)
 			}
+		case StackModeFirst:
+		case StackModeLast:
+			s.takeFrom(other, i)
 		case StackModeWeight:
 			totalWeight := s.Weight[i] + other.Weight[i]
 			if totalWeight > 0 {
 				s.Elevation[i] = (currentVal*s.Weight[i] + otherVal*other.Weight[i]) / totalWeight
 				s.Weight[i] = totalWeight
 			}
+			s.Uncertainty[i] = math.Sqrt(s.Uncertainty[i]*s.Uncertainty[i] + other.Uncertainty[i]*other.Uncertainty[i])
 		}
-
-		s.Uncertainty[i] = math.Sqrt(s.Uncertainty[i]*s.Uncertainty[i] + other.Uncertainty[i]*other.Uncertainty[i])
 	}
 
 	return nil
@@ -141,15 +180,12 @@ func (s *Stack) Write(outputPath string) error {
 }
 
 func ReadStack(path string) (*Stack, error) {
-	size := 1
-	region := &dem.Region{XSize: 0, YSize: 0}
-	data, reg, err := dem.ReadDEM(path)
+	data, region, err := dem.ReadDEM(path)
 	if err != nil {
 		return nil, err
 	}
-	region = reg
-	size = region.XSize * region.YSize
 
+	size := region.XSize * region.YSize
 	stack := &Stack{
 		Elevation:   data,
 		Count:       make([]float64, size),
@@ -159,21 +195,49 @@ func ReadStack(path string) (*Stack, error) {
 		Region:      region,
 		NoData:      dem.DefaultNoData,
 	}
+	if noData, ok := readFileNoData(path); ok {
+		stack.NoData = noData
+	}
 
-	if band2, _, err := dem.ReadDEMBand(path, 2); err == nil {
-		stack.Count = band2
+	var bandErrs []error
+	for _, band := range []struct {
+		idx int
+		dst *[]float64
+	}{
+		{2, &stack.Count},
+		{3, &stack.Weight},
+		{4, &stack.Uncertainty},
+		{5, &stack.SourceID},
+	} {
+		bandData, _, err := dem.ReadDEMBand(path, band.idx)
+		if err != nil {
+			bandErrs = append(bandErrs, fmt.Errorf("band %d: %v", band.idx, err))
+			continue
+		}
+		*band.dst = bandData
 	}
-	if band3, _, err := dem.ReadDEMBand(path, 3); err == nil {
-		stack.Weight = band3
-	}
-	if band4, _, err := dem.ReadDEMBand(path, 4); err == nil {
-		stack.Uncertainty = band4
-	}
-	if band5, _, err := dem.ReadDEMBand(path, 5); err == nil {
-		stack.SourceID = band5
+	if len(bandErrs) > 0 {
+		return nil, errors.Join(bandErrs...)
 	}
 
 	return stack, nil
+}
+
+func readFileNoData(path string) (float64, bool) {
+	var noData float64
+	valid := false
+	err := gdal.WithDatasetReadonly(path, func(ds gdal.Dataset) error {
+		v, ok := ds.RasterBand(1).NoDataValue()
+		if ok {
+			noData = v
+			valid = true
+		}
+		return nil
+	})
+	if err != nil || !valid {
+		return dem.DefaultNoData, false
+	}
+	return noData, true
 }
 
 func BuildDataList(paths []string) (*DataList, error) {
@@ -189,6 +253,9 @@ func BuildDataList(paths []string) (*DataList, error) {
 				return nil, fmt.Errorf("read dir %s: %v", p, err)
 			}
 			for _, entry := range entries {
+				if entry.IsDir() || !isKnownSource(entry.Name()) {
+					continue
+				}
 				entryPath := filepath.Join(p, entry.Name())
 				dl.Entries = append(dl.Entries, DataEntry{
 					Path: entryPath,
@@ -205,28 +272,31 @@ func BuildDataList(paths []string) (*DataList, error) {
 	return dl, nil
 }
 
-func detectType(path string) DataSourceType {
-	ext := filepath.Ext(path)
-	switch ext {
-	case ".tif", ".tiff", ".img", ".asc", ".hgt":
-		return SourceRaster
-	case ".las", ".laz", ".xyz", ".csv", ".txt":
-		return SourcePoint
-	case ".shp", ".geojson", ".json", ".gpkg":
-		return SourceVector
-	default:
-		return SourceRaster
-	}
+var sourceTypes = map[string]DataSourceType{
+	".tif":     SourceRaster,
+	".tiff":    SourceRaster,
+	".img":     SourceRaster,
+	".asc":     SourceRaster,
+	".hgt":     SourceRaster,
+	".las":     SourcePoint,
+	".laz":     SourcePoint,
+	".xyz":     SourcePoint,
+	".csv":     SourcePoint,
+	".txt":     SourcePoint,
+	".shp":     SourceVector,
+	".geojson": SourceVector,
+	".json":    SourceVector,
+	".gpkg":    SourceVector,
 }
 
-func validateDataList(dl *DataList) error {
-	if len(dl.Entries) == 0 {
-		return fmt.Errorf("no valid data entries")
+func detectType(path string) DataSourceType {
+	if t, ok := sourceTypes[strings.ToLower(filepath.Ext(path))]; ok {
+		return t
 	}
-	for _, entry := range dl.Entries {
-		if _, err := os.Stat(entry.Path); os.IsNotExist(err) {
-			return fmt.Errorf("data source not found: %s", entry.Path)
-		}
-	}
-	return nil
+	return SourceRaster
+}
+
+func isKnownSource(path string) bool {
+	_, ok := sourceTypes[strings.ToLower(filepath.Ext(path))]
+	return ok
 }

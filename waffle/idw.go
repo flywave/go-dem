@@ -23,10 +23,10 @@ func (w *idwWaffle) Run(points []Point, opts *Options) (*Result, error) {
 	if len(points) == 0 {
 		return nil, fmt.Errorf("no source points provided")
 	}
-	region := opts.Region
-	if region == nil {
+	if opts == nil || opts.Region == nil {
 		return nil, fmt.Errorf("region is required")
 	}
+	region := opts.Region
 
 	if region.XSize <= 0 || region.YSize <= 0 {
 		region.XSize = int(math.Round((region.BBox().Max[0] - region.BBox().Min[0]) / region.XRes))
@@ -51,7 +51,6 @@ func (w *idwWaffle) Run(points []Point, opts *Options) (*Result, error) {
 
 	kdtree := NewKDTree(pts)
 
-	gt := region.GeoTransform()
 	searchRadius := opts.SearchRadius
 	if searchRadius <= 0 {
 		searchRadius = region.XRes * 10
@@ -62,10 +61,15 @@ func (w *idwWaffle) Run(points []Point, opts *Options) (*Result, error) {
 		minPoints = 3
 	}
 
+	if err := startRun(opts, w.Name(), region.YSize); err != nil {
+		return nil, err
+	}
 	for y := 0; y < region.YSize; y++ {
+		if err := dem.CheckCtx(opts.Ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", w.Name(), err)
+		}
 		for x := 0; x < region.XSize; x++ {
-			geoX := gt[0] + float64(x)*gt[1] + float64(y)*gt[2]
-			geoY := gt[3] + float64(x)*gt[4] + float64(y)*gt[5]
+			geoX, geoY := region.PixelCenterGeo(x, y)
 
 			q := vec2.T{geoX, geoY}
 			idxs, dists := kdtree.RadiusSearch(q, searchRadius)
@@ -73,19 +77,21 @@ func (w *idwWaffle) Run(points []Point, opts *Options) (*Result, error) {
 			if len(idxs) < minPoints {
 				idxs2, dists2 := kdtree.KNN(q, minPoints)
 				if len(idxs2) >= minPoints {
-					demData[y*region.XSize+x] = weightedIDW(idxs2, dists2, zs, power)
+					demData[y*region.XSize+x] = weightedIDW(idxs2, dists2, zs, power, noData)
 				}
 				continue
 			}
 
-			demData[y*region.XSize+x] = weightedIDW(idxs, dists, zs, power)
+			demData[y*region.XSize+x] = weightedIDW(idxs, dists, zs, power, noData)
 		}
+		dem.ReportProgress(opts.Progress, w.Name(), y+1, region.YSize)
 	}
+	finishRun(opts, w.Name(), region.YSize)
 
 	return &Result{DEM: demData, Region: region}, nil
 }
 
-func weightedIDW(idxs []int, dists []float64, zs []float64, power float64) float64 {
+func weightedIDW(idxs []int, dists []float64, zs []float64, power float64, noData float64) float64 {
 	var sumWeight, sumValue float64
 	for i, idx := range idxs {
 		d := dists[i]
@@ -99,5 +105,5 @@ func weightedIDW(idxs []int, dists []float64, zs []float64, power float64) float
 	if sumWeight > 0 {
 		return sumValue / sumWeight
 	}
-	return 0
+	return noData
 }

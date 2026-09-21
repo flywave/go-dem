@@ -16,6 +16,10 @@ func init() {
 
 func (f *euclideanDistanceFilter) Run(data []float64, region *dem.Region, opts *Options) ([]float64, error) {
 	nd := opts.GetNoData()
-	dist := dem.ComputeEuclideanDistance(data, region.XSize, region.YSize, nd, region.XRes)
+	if err := startFilter(opts, f.Name(), region.YSize); err != nil {
+		return nil, err
+	}
+	dist := dem.ComputeEuclideanDistance(data, region.XSize, region.YSize, nd, region.XRes, region.YRes)
+	finishFilter(opts, f.Name(), region.YSize)
 	return dist, nil
 }

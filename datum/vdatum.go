@@ -15,37 +15,47 @@ type VDatumGrid struct {
 	Model       geoid.VerticalDatum
 	SrcEpsg     int
 	DstEpsg     int
+	NoData      float64
 }
 
 func GenerateTransformGrid(region *dem.Region, epsgIn, epsgOut int, model geoid.VerticalDatum) (*VDatumGrid, error) {
-	vt := NewVerticalTransform(TransformOptions{
+	opts := TransformOptions{
 		EpsgIn:  epsgIn,
 		EpsgOut: epsgOut,
 		Region:  region,
-	})
+	}
+	if model != geoid.HAE && model != geoid.UNKNOWN {
+		if EPSGToVerticalDatum(epsgIn) == geoid.HAE {
+			opts.GeoidIn = model.ToString()
+		}
+		if EPSGToVerticalDatum(epsgOut) == geoid.HAE {
+			opts.GeoidOut = model.ToString()
+		}
+	}
+
+	vt := NewVerticalTransform(opts)
 	result, err := vt.Run()
 	if err != nil {
 		return nil, err
 	}
-
-	return &VDatumGrid{
-		Data:    result.Grid,
-		Uncertainty: result.Uncertainty,
-		Region:  region,
-		SrcEpsg: epsgIn,
-		DstEpsg: epsgOut,
-	}, nil
+	return newVDatumGrid(region, epsgIn, epsgOut, result), nil
 }
 
 func GenerateGeoidGrid(region *dem.Region, model geoid.VerticalDatum) (*VDatumGrid, error) {
 	data := computeGeoidGrid(region, model)
 	size := region.XSize * region.YSize
+	unc := make([]float64, size)
+	if u := geoidUncertainty(model); u > 0 {
+		for i := range unc {
+			unc[i] = u
+		}
+	}
 
 	return &VDatumGrid{
-		Data:    data,
-		Uncertainty: make([]float64, size),
-		Region:  region,
-		Model:   model,
+		Data:        data,
+		Uncertainty: unc,
+		Region:      region,
+		Model:       model,
 	}, nil
 }
 
@@ -59,19 +69,30 @@ func MultiStepTransform(region *dem.Region, epsgIn, epsgOut int) (*VDatumGrid, e
 	if err != nil {
 		return nil, err
 	}
+	return newVDatumGrid(region, epsgIn, epsgOut, result), nil
+}
 
+func newVDatumGrid(region *dem.Region, epsgIn, epsgOut int, result *TransformResult) *VDatumGrid {
 	return &VDatumGrid{
-		Data:    result.Grid,
+		Data:        result.Grid,
 		Uncertainty: result.Uncertainty,
-		Region:  region,
-		SrcEpsg: epsgIn,
-		DstEpsg: epsgOut,
-	}, nil
+		Region:      region,
+		SrcEpsg:     epsgIn,
+		DstEpsg:     epsgOut,
+		NoData:      result.NoData,
+	}
+}
+
+func (vg *VDatumGrid) noDataValue() float64 {
+	if vg.NoData != 0 {
+		return vg.NoData
+	}
+	return dem.DefaultNoData
 }
 
 func (vg *VDatumGrid) ApplyToDEM(demData []float64, inverse bool) []float64 {
 	result := make([]float64, len(demData))
-	noData := dem.DefaultNoData
+	noData := vg.noDataValue()
 
 	for i := range demData {
 		if demData[i] == noData || math.IsNaN(demData[i]) {
@@ -97,11 +118,11 @@ func (vg *VDatumGrid) ApplyToDEM(demData []float64, inverse bool) []float64 {
 }
 
 func (vg *VDatumGrid) Write(path string) error {
-	return dem.CreateDEM(vg.Data, vg.Region, path, -9999)
+	return dem.CreateDEM(vg.Data, vg.Region, path, vg.noDataValue())
 }
 
 func (vg *VDatumGrid) WriteUncertainty(path string) error {
-	return dem.CreateDEM(vg.Uncertainty, vg.Region, path, -9999)
+	return dem.CreateDEM(vg.Uncertainty, vg.Region, path, vg.noDataValue())
 }
 
 func EPSGToVerticalDatum(epsg int) geoid.VerticalDatum {

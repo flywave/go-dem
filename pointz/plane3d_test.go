@@ -134,6 +134,6 @@ func TestRefitPlaneInliers(t *testing.T) {
 	initial := Plane3D{NX: -0.577, NY: -0.577, NZ: 0.577, D: 0}
 	refined := refitPlaneInliers(pts, initial, 2.0)
 	if !refined.IsValid() {
-		t.Log("refit may fail with few inliers, using initial")
+		t.Fatal("refit should produce a valid plane for 3 inliers")
 	}
 }

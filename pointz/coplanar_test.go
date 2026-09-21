@@ -27,7 +27,9 @@ func TestCoplanar_Basic(t *testing.T) {
 			outliers++
 		}
 	}
-	t.Logf("coplanar: %d/%d outliers", outliers, len(pts))
+	if outliers > 2 {
+		t.Errorf("coplanar: plane z=x+5y should fit all points, %d/%d marked as outliers", outliers, len(pts))
+	}
 }
 
 func TestCoplanar_Flat(t *testing.T) {
@@ -71,10 +73,8 @@ func TestCoplanar_Spike(t *testing.T) {
 		Threshold:    1.0,
 		MinNeighbors: 3,
 	})
-	if mask[16] {
-		t.Log("coplanar: spike detected as outlier")
-	} else {
-		t.Log("coplanar: spike not detected (may depend on layout)")
+	if !mask[16] {
+		t.Error("coplanar: spike at (0.5,0.5,200) should be detected as outlier")
 	}
 }
 
@@ -86,7 +86,18 @@ func TestCoplanar_Invert(t *testing.T) {
 		MinNeighbors: 3,
 		Invert:       true,
 	})
-	if !mask[0] {
-		t.Log("isolated point inverted")
+	if mask[0] {
+		t.Error("isolated point is an outlier; after invert it should not be masked")
+	}
+}
+
+func TestCoplanar_NilOptions(t *testing.T) {
+	pts := make([]Point3D, 9)
+	for i := range pts {
+		pts[i] = Point3D{X: float64(i % 3), Y: float64(i / 3), Z: 10}
+	}
+	mask := CoplanarFilter(pts, nil)
+	if mask == nil || len(mask) != len(pts) {
+		t.Fatalf("expected %d results, got %d", len(pts), len(mask))
 	}
 }

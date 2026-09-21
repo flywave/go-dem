@@ -3,7 +3,6 @@ package waffle
 import (
 	"container/heap"
 	"math"
-	"sort"
 
 	"github.com/flywave/go3d/float64/vec2"
 )
@@ -31,23 +30,13 @@ func NewKDTree(pts []vec2.T) *KDTree {
 	return &KDTree{Root: buildKDTree(pts, indices, 0)}
 }
 
-type kdSortable struct {
-	pts  []vec2.T
-	idx  []int
-	axis int
-}
-
-func (s kdSortable) Len() int           { return len(s.idx) }
-func (s kdSortable) Less(i, j int) bool { return s.pts[s.idx[i]][s.axis] < s.pts[s.idx[j]][s.axis] }
-func (s kdSortable) Swap(i, j int)      { s.idx[i], s.idx[j] = s.idx[j], s.idx[i] }
-
 func buildKDTree(pts []vec2.T, indices []int, depth int) *KDNode {
 	if len(indices) == 0 {
 		return nil
 	}
 	axis := depth % 2
-	sort.Sort(kdSortable{pts: pts, idx: indices, axis: axis})
 	mid := len(indices) / 2
+	quickSelectIdx(indices, pts, axis, mid)
 
 	return &KDNode{
 		Point: pts[indices[mid]],
@@ -58,6 +47,40 @@ func buildKDTree(pts []vec2.T, indices []int, depth int) *KDNode {
 	}
 }
 
+func quickSelectIdx(idx []int, pts []vec2.T, axis, k int) {
+	for len(idx) > 1 {
+		lt, gt := partitionIdx3(idx, pts, axis)
+		if k < lt {
+			idx = idx[:lt]
+		} else if k > gt {
+			k -= gt + 1
+			idx = idx[gt+1:]
+		} else {
+			return
+		}
+	}
+}
+
+func partitionIdx3(idx []int, pts []vec2.T, axis int) (int, int) {
+	n := len(idx)
+	pivot := pts[idx[n/2]][axis]
+	lt, i, gt := 0, 0, n-1
+	for i <= gt {
+		v := pts[idx[i]][axis]
+		if v < pivot {
+			idx[lt], idx[i] = idx[i], idx[lt]
+			lt++
+			i++
+		} else if v > pivot {
+			idx[gt], idx[i] = idx[i], idx[gt]
+			gt--
+		} else {
+			i++
+		}
+	}
+	return lt, gt
+}
+
 type maxHeapEntry struct {
 	dist2 float64
 	index int
@@ -65,9 +88,9 @@ type maxHeapEntry struct {
 
 type maxHeap []maxHeapEntry
 
-func (h maxHeap) Len() int           { return len(h) }
-func (h maxHeap) Less(i, j int) bool { return h[i].dist2 > h[j].dist2 }
-func (h maxHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h maxHeap) Len() int            { return len(h) }
+func (h maxHeap) Less(i, j int) bool  { return h[i].dist2 > h[j].dist2 }
+func (h maxHeap) Swap(i, j int)       { h[i], h[j] = h[j], h[i] }
 func (h *maxHeap) Push(x interface{}) { *h = append(*h, x.(maxHeapEntry)) }
 func (h *maxHeap) Pop() interface{} {
 	old := *h

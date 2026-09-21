@@ -1,14 +1,14 @@
 package pointz
 
 import (
-	"math"
-
 	"github.com/flywave/go-dem/delaunay"
 )
 
 type ConvexHull struct {
-	Points   []Point3D
-	delaunay [][3]int
+	Points      []Point3D
+	delaunay    [][3]int
+	trisBox     [][4]float64
+	delaunayErr error
 }
 
 func computeConvexHull(points []Point3D) ConvexHull {
@@ -29,7 +29,11 @@ func computeConvexHull(points []Point3D) ConvexHull {
 		result = append(result, points[p])
 		q := (p + 1) % len(points)
 		for i := 0; i < len(points); i++ {
-			if orientation(points[p], points[i], points[q]) == 2 {
+			if i == p {
+				continue
+			}
+			o := orientation(points[p], points[i], points[q])
+			if o == 2 || (o == 0 && dist2(points[p], points[i]) > dist2(points[p], points[q])) {
 				q = i
 			}
 		}
@@ -44,6 +48,12 @@ func computeConvexHull(points []Point3D) ConvexHull {
 	return h
 }
 
+func dist2(a, b Point3D) float64 {
+	dx := a.X - b.X
+	dy := a.Y - b.Y
+	return dx*dx + dy*dy
+}
+
 func (h *ConvexHull) initDelaunay() {
 	if len(h.Points) < 3 {
 		return
@@ -55,17 +65,35 @@ func (h *ConvexHull) initDelaunay() {
 		y[i] = p.Y
 	}
 	tris, _, err := delaunay.Triangulate(x, y)
-	if err == nil {
-		h.delaunay = tris
+	if err != nil {
+		h.delaunayErr = err
+		return
 	}
+	h.delaunay = tris
+	boxes := make([][4]float64, len(tris))
+	for i, tr := range tris {
+		a, b, c := h.Points[tr[0]], h.Points[tr[1]], h.Points[tr[2]]
+		boxes[i] = [4]float64{
+			min(a.X, min(b.X, c.X)),
+			max(a.X, max(b.X, c.X)),
+			min(a.Y, min(b.Y, c.Y)),
+			max(a.Y, max(b.Y, c.Y)),
+		}
+	}
+	h.trisBox = boxes
 }
 
 func orientation(p, q, r Point3D) int {
-	val := (q.Y-p.Y)*(r.X-q.X) - (q.X-p.X)*(r.Y-q.Y)
-	if math.Abs(val) < 1e-12 {
+	cross := (q.Y-p.Y)*(r.X-q.X) - (q.X-p.X)*(r.Y-q.Y)
+	l1 := (q.X-p.X)*(q.X-p.X) + (q.Y-p.Y)*(q.Y-p.Y)
+	l2 := (r.X-q.X)*(r.X-q.X) + (r.Y-q.Y)*(r.Y-q.Y)
+	if l1 == 0 || l2 == 0 {
 		return 0
 	}
-	if val > 0 {
+	if cross*cross < 1e-24*l1*l2 {
+		return 0
+	}
+	if cross > 0 {
 		return 1
 	}
 	return 2
@@ -104,6 +132,9 @@ func (h *ConvexHull) KeepPointsInside(pts []Point3D) []Point3D {
 	return result
 }
 
+// CalculateMask reports for each point whether it lies inside the hull
+// (true = inside). Note this is the opposite of the package-wide filter
+// convention where mask true means "remove".
 func (h *ConvexHull) CalculateMask(pts []Point3D) []bool {
 	mask := make([]bool, len(pts))
 	if len(h.Points) < 3 {
@@ -139,6 +170,10 @@ func (h *ConvexHull) findSimplex(pt Point3D) int {
 		return -1
 	}
 	for i, tr := range h.delaunay {
+		bb := h.trisBox[i]
+		if pt.X < bb[0] || pt.X > bb[1] || pt.Y < bb[2] || pt.Y > bb[3] {
+			continue
+		}
 		a, b, c := h.Points[tr[0]], h.Points[tr[1]], h.Points[tr[2]]
 		o1 := orientation(a, b, pt)
 		o2 := orientation(b, c, pt)

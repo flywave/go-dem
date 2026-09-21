@@ -4,11 +4,18 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/flywave/go-dem"
 	"github.com/flywave/go-delaunay"
+	"github.com/flywave/go-dem"
 	"github.com/flywave/go3d/float64/vec2"
 )
 
+// naturalNeighborWaffle evaluates the mean-value ("Laplace") weights over the
+// Delaunay triangulation of the input points. A mean-value barycentric basis
+// reproduces linear precision, so for a query point inside a single triangle
+// the normalized weights are exactly the triangle's barycentric coordinates:
+// this method is mathematically equivalent to the "linear" TIN interpolation
+// (it is not a Sibson natural-neighbour interpolation). The registration name
+// is kept for backward compatibility.
 type naturalNeighborWaffle struct {
 	baseWaffle
 }
@@ -22,6 +29,9 @@ func init() {
 func (nw *naturalNeighborWaffle) Run(points []Point, opts *Options) (*Result, error) {
 	if len(points) < 3 {
 		return nil, fmt.Errorf("need at least 3 points, got %d", len(points))
+	}
+	if opts == nil || opts.Region == nil {
+		return nil, fmt.Errorf("region is required")
 	}
 
 	region := opts.Region
@@ -48,15 +58,21 @@ func (nw *naturalNeighborWaffle) Run(points []Point, opts *Options) (*Result, er
 	}
 
 	triMap := tri.GetTrianglesPointsMap()
-	triList := make([]triangleIndex, 0, len(triMap))
+	triList := make([][3]int, 0, len(triMap))
 	for _, ti := range triMap {
-		if len(ti) != 3 {
-			continue
+		if len(ti) == 3 {
+			triList = append(triList, [3]int{ti[0], ti[1], ti[2]})
 		}
-		cx := (pts[ti[0]][0] + pts[ti[1]][0] + pts[ti[2]][0]) / 3
-		cy := (pts[ti[0]][1] + pts[ti[1]][1] + pts[ti[2]][1]) / 3
-		triList = append(triList, triangleIndex{cx: cx, cy: cy, pts: [3]int{ti[0], ti[1], ti[2]}})
 	}
+
+	gridSize := int(math.Sqrt(float64(len(triList))))
+	if gridSize < 10 {
+		gridSize = 10
+	}
+	if gridSize > 100 {
+		gridSize = 100
+	}
+	gridIdx := buildTriangleGridIndex(triList, pts, gridSize)
 
 	noData := opts.NoData
 	if noData == 0 {
@@ -70,19 +86,37 @@ func (nw *naturalNeighborWaffle) Run(points []Point, opts *Options) (*Result, er
 		demData[i] = noData
 	}
 
-	gt := region.GeoTransform()
-
+	stage := string(dem.MethodNaturalNeighbor)
+	if err := startRun(opts, stage, height); err != nil {
+		return nil, err
+	}
 	for y := 0; y < height; y++ {
+		if err := dem.CheckCtx(opts.Ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", stage, err)
+		}
 		for x := 0; x < width; x++ {
-			geoX := gt[0] + float64(x)*gt[1] + float64(y)*gt[2]
-			geoY := gt[3] + float64(x)*gt[4] + float64(y)*gt[5]
+			geoX, geoY := region.PixelCenterGeo(x, y)
 
-			val := interpolateLaplace(geoX, geoY, pts, zs, triList)
+			val := math.NaN()
+			for _, ti := range gridIdx.findTriangles(geoX, geoY) {
+				if ti >= len(triList) {
+					continue
+				}
+				t := triList[ti]
+				p0, p1, p2 := pts[t[0]], pts[t[1]], pts[t[2]]
+				z0, z1, z2 := zs[t[0]], zs[t[1]], zs[t[2]]
+				if _, inside := barycentricInterp(geoX, geoY, p0, p1, p2, z0, z1, z2); inside {
+					val = laplaceWeightedInterp(geoX, geoY, p0, p1, p2, z0, z1, z2)
+					break
+				}
+			}
 			if !math.IsNaN(val) {
 				demData[y*width+x] = val
 			}
 		}
+		dem.ReportProgress(opts.Progress, stage, y+1, height)
 	}
+	finishRun(opts, stage, height)
 
 	return &Result{DEM: demData, Region: region}, nil
 }

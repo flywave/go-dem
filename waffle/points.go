@@ -9,13 +9,15 @@ import (
 )
 
 func PointsFromRaster(path string) ([]Point, error) {
+	return PointsFromRasterWithNoData(path, dem.DefaultNoData)
+}
+
+func PointsFromRasterWithNoData(path string, noData float64) ([]Point, error) {
 	data, region, err := dem.ReadDEM(path)
 	if err != nil {
 		return nil, fmt.Errorf("read raster %s: %v", path, err)
 	}
 
-	gt := region.GeoTransform()
-	noData := dem.DefaultNoData
 	pts := make([]Point, 0, len(data)/4)
 
 	for y := 0; y < region.YSize; y++ {
@@ -24,8 +26,7 @@ func PointsFromRaster(path string) ([]Point, error) {
 			if z == noData || math.IsNaN(z) {
 				continue
 			}
-			geoX := gt[0] + float64(x)*gt[1] + float64(y)*gt[2]
-			geoY := gt[3] + float64(x)*gt[4] + float64(y)*gt[5]
+			geoX, geoY := region.PixelCenterGeo(x, y)
 			pts = append(pts, Point{
 				Position: vec2.T{geoX, geoY},
 				Z:        z,

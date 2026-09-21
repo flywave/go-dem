@@ -18,8 +18,8 @@ func TestFlowDirection_Basic(t *testing.T) {
 			flowCount++
 		}
 	}
-	if flowCount == 0 {
-		t.Error("no flow directions computed")
+	if flowCount != w*h-1 {
+		t.Errorf("ramp: every cell except the outflow corner should flow, got %d/%d", flowCount, w*h-1)
 	}
 }
 
@@ -28,14 +28,11 @@ func TestFlowDirection_Flat(t *testing.T) {
 	nd := -9999.0
 	data := makeFlatDEM(w, h, 100)
 	dir := computeFlowDirection(data, w, h, nd)
-	flowing := 0
 	for _, d := range dir {
 		if d >= 0 {
-			flowing++
+			t.Error("flat dem: no cell should have a flow direction")
+			break
 		}
-	}
-	if flowing > 0 {
-		t.Logf("flat dem: %d pixels with flow direction (correct: none should flow)", flowing)
 	}
 }
 
@@ -46,18 +43,32 @@ func TestFlowDirection_SinglePit(t *testing.T) {
 	data[2*w+2] = 0
 
 	dir := computeFlowDirection(data, w, h, nd)
-	centerFlowsTo := dir[2*w+2]
-	if centerFlowsTo != w*w+h {
-		t.Logf("pit at center flows to %d", centerFlowsTo)
+	if dir[2*w+2] != -1 {
+		t.Errorf("pit is the lowest cell, should not flow, got %d", dir[2*w+2])
 	}
-
 	flowsToCenter := 0
 	for i := range dir {
 		if dir[i] == 2*w+2 {
 			flowsToCenter++
 		}
 	}
-	t.Logf("%d cells flow into the pit", flowsToCenter)
+	if flowsToCenter != 8 {
+		t.Errorf("all 8 neighbors of the pit should flow into it, got %d", flowsToCenter)
+	}
+}
+
+func TestFlowDirection_SteepestDescent(t *testing.T) {
+	w, h := 3, 3
+	nd := -9999.0
+	data := makeFlatDEM(w, h, 100)
+	data[1*w+1] = 100
+	data[1*w+2] = 60
+	data[2] = 50
+
+	dir := computeFlowDirection(data, w, h, nd)
+	if dir[1*w+1] != 1*w+2 {
+		t.Errorf("east slope 40 should beat diagonal slope %.2f, got dir %d", 50/math.Sqrt2, dir[1*w+1])
+	}
 }
 
 func TestFlowAccumulation_Basic(t *testing.T) {
@@ -66,20 +77,20 @@ func TestFlowAccumulation_Basic(t *testing.T) {
 	data := makeRampDEM(w, h)
 	acc := computeFlowAccumulationIterative(data, w, h, nd)
 
-	totalAcc := 0.0
-	noDataCount := 0
+	maxAcc := 0.0
 	for _, v := range acc {
-		if v == nd || math.IsNaN(v) {
-			noDataCount++
-		} else {
-			totalAcc += v
+		if v < 1 {
+			t.Errorf("every valid cell accumulates at least itself, got %.2f", v)
+		}
+		if v > maxAcc {
+			maxAcc = v
 		}
 	}
-	if noDataCount == len(acc) {
-		t.Error("all pixels have noData accumulation")
+	if maxAcc != float64(w*h) {
+		t.Errorf("outflow corner should accumulate the whole grid: %.0f, want %d", maxAcc, w*h)
 	}
-	if totalAcc <= 0 {
-		t.Error("accumulation sum should be positive")
+	if acc[0] != maxAcc {
+		t.Errorf("outflow corner (0,0) should hold the maximum, got %.0f vs %.0f", acc[0], maxAcc)
 	}
 }
 
@@ -88,14 +99,10 @@ func TestFlowAccumulation_Flat(t *testing.T) {
 	nd := -9999.0
 	data := makeFlatDEM(w, h, 100)
 	acc := computeFlowAccumulationIterative(data, w, h, nd)
-	nonZero := 0
-	for _, v := range acc {
-		if v > 0 {
-			nonZero++
+	for i, v := range acc {
+		if v != 1 {
+			t.Errorf("flat dem: cell %d has no inflow, accumulation should be 1, got %.2f", i, v)
 		}
-	}
-	if nonZero > 0 {
-		t.Logf("flat dem: %d cells with flow accumulation", nonZero)
 	}
 }
 

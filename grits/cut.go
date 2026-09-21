@@ -1,6 +1,8 @@
 package grits
 
 import (
+	"fmt"
+
 	"github.com/flywave/go-dem"
 )
 
@@ -14,7 +16,7 @@ func init() {
 
 func (f *cutFilter) Run(data []float64, region *dem.Region, opts *Options) ([]float64, error) {
 	bounds := opts.CutBounds
-	if bounds[0] == 0 && bounds[1] == 0 && bounds[2] == 0 && bounds[3] == 0 {
+	if len(bounds) != 4 {
 		return data, nil
 	}
 
@@ -24,12 +26,16 @@ func (f *cutFilter) Run(data []float64, region *dem.Region, opts *Options) ([]fl
 	copy(result, data)
 
 	xMin, yMin, xMax, yMax := bounds[0], bounds[1], bounds[2], bounds[3]
-	gt := region.GeoTransform()
 
+	if err := startFilter(opts, f.Name(), h); err != nil {
+		return nil, err
+	}
 	for y := 0; y < h; y++ {
+		if err := dem.CheckCtx(opts.Ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", f.Name(), err)
+		}
 		for x := 0; x < w; x++ {
-			geoX := gt[0] + float64(x)*gt[1]
-			geoY := gt[3] + float64(y)*gt[5]
+			geoX, geoY := region.PixelCenterGeo(x, y)
 
 			inside := geoX >= xMin && geoX <= xMax && geoY >= yMin && geoY <= yMax
 
@@ -38,7 +44,9 @@ func (f *cutFilter) Run(data []float64, region *dem.Region, opts *Options) ([]fl
 				result[y*w+x] = noData
 			}
 		}
+		dem.ReportProgress(opts.Progress, f.Name(), y+1, h)
 	}
 
+	finishFilter(opts, f.Name(), h)
 	return result, nil
 }

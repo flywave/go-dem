@@ -41,12 +41,19 @@ func TestBlockThin_Max(t *testing.T) {
 		Mode:       BlockThinMax,
 	})
 	kept := 0
-	for _, m := range mask {
+	keptZ := 0.0
+	for i, m := range mask {
 		if !m {
 			kept++
+			keptZ = pts[i].Z
 		}
 	}
-	t.Logf("blockthin max: kept %d points", kept)
+	if kept != 1 {
+		t.Errorf("blockthin max: kept %d points (expected 1)", kept)
+	}
+	if keptZ != 20 {
+		t.Errorf("blockthin max: expected Z=20 kept, got %.0f", keptZ)
+	}
 }
 
 func TestBlockThin_Mean(t *testing.T) {
@@ -60,14 +67,18 @@ func TestBlockThin_Mean(t *testing.T) {
 		Mode:       BlockThinMean,
 	})
 	kept := 0
-	for _, m := range mask {
+	keptZ := 0.0
+	for i, m := range mask {
 		if !m {
 			kept++
+			keptZ = pts[i].Z
 		}
 	}
-	t.Logf("blockthin mean: kept %d points", kept)
 	if kept != 1 {
-		t.Log("blockthin mean: all points in same cell, expected 1 kept")
+		t.Errorf("blockthin mean: kept %d points (expected 1)", kept)
+	}
+	if keptZ != 20 {
+		t.Errorf("blockthin mean: mean of {10,20,30} is 20, kept Z=%.0f", keptZ)
 	}
 }
 
@@ -82,12 +93,27 @@ func TestBlockThin_Median(t *testing.T) {
 		Mode:       BlockThinMedian,
 	})
 	kept := 0
-	for _, m := range mask {
+	keptZ := 0.0
+	for i, m := range mask {
 		if !m {
 			kept++
+			keptZ = pts[i].Z
 		}
 	}
-	t.Logf("blockthin median: kept %d points", kept)
+	if kept != 1 {
+		t.Errorf("blockthin median: kept %d points (expected 1)", kept)
+	}
+	if keptZ != 20 {
+		t.Errorf("blockthin median: median of {10,20,30} is 20, kept Z=%.0f", keptZ)
+	}
+}
+
+func TestBlockThin_NilOptions(t *testing.T) {
+	pts := []Point3D{{X: 0, Y: 0, Z: 10}}
+	mask := BlockThinFilter(pts, nil)
+	if mask == nil || len(mask) != 1 || mask[0] {
+		t.Error("nil opts should keep the single point")
+	}
 }
 
 func TestBlockThin_Empty(t *testing.T) {

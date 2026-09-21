@@ -13,8 +13,24 @@ package datum
 */
 import "C"
 import (
+	"errors"
+	"sync"
 	"unsafe"
 )
+
+var (
+	htdpProbeOnce sync.Once
+	htdpStubbed   bool
+)
+
+func htdpIsStub() bool {
+	htdpProbeOnce.Do(func() {
+		const lat, lon, h = 40.0, -100.0, 500.0
+		outLat, outLon, outH, err := HTDPTransformPoint(lat, lon, h, 1, 1997.0, 23, 2020.0)
+		htdpStubbed = err == nil && outLat == lat && outLon == lon && outH == h
+	})
+	return htdpStubbed
+}
 
 func HTDPTransformPoint(lat, lon, h float64, srcID, dstID int, srcEpoch, dstEpoch float64) (float64, float64, float64, error) {
 	var outLat, outLon, outH C.double
@@ -48,29 +64,32 @@ func HTDPSetGridPath(path string) {
 	C.htdp_set_grid_path(cPath)
 }
 
-func cHTDPGrid(gridDef [6]float64, srcID, dstID int, srcEpoch, dstEpoch float64) []float64 {
+func cHTDPGrid(gridDef [6]float64, srcID, dstID int, srcEpoch, dstEpoch float64) ([]float64, error) {
+	if htdpIsStub() {
+		return nil, errors.New("htdp transform is a stub implementation (returns input unchanged)")
+	}
+
 	xCount := int(gridDef[4])
 	yCount := int(gridDef[5])
 	n := xCount * yCount
 	result := make([]float64, n)
 
 	xMin, yMax := gridDef[0], gridDef[1]
-	xMax, yMin := gridDef[2], gridDef[3]
-	xInc := (xMax - xMin) / float64(xCount-1)
-	yInc := (yMin - yMax) / float64(yCount-1)
+	xInc := (gridDef[2] - xMin) / gridDef[4]
+	yInc := (gridDef[3] - yMax) / gridDef[5]
 
 	idx := 0
 	for y := 0; y < yCount; y++ {
 		lat := yMax + float64(y)*yInc
 		for x := 0; x < xCount; x++ {
 			lon := xMin + float64(x)*xInc
-			if outLat, outLon, outH, err := HTDPTransformPoint(lat, lon, 0, srcID, dstID, srcEpoch, dstEpoch); err == nil {
-				_ = outLat
-				_ = outLon
-				result[idx] = outH
+			_, _, outH, err := HTDPTransformPoint(lat, lon, 0, srcID, dstID, srcEpoch, dstEpoch)
+			if err != nil {
+				return nil, err
 			}
+			result[idx] = outH
 			idx++
 		}
 	}
-	return result
+	return result, nil
 }

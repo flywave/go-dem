@@ -63,3 +63,5 @@ func CoalesceNoData(userVal *float64) float64 {
 	}
 	return DefaultNoData
 }
+
+type ProgressFunc func(stage string, done, total int)

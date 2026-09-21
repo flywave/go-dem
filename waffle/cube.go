@@ -20,7 +20,7 @@ type soundingParams struct {
 }
 
 func init() {
-	Register("cube", func() Waffle {
+	Register(dem.MethodCUBE, func() Waffle {
 		return &cubeWaffle{baseWaffle: baseWaffle{name: "cube"}}
 	})
 }
@@ -39,6 +39,9 @@ func tvu(depth, a, b float64) float64 {
 func (cw *cubeWaffle) Run(points []Point, opts *Options) (*Result, error) {
 	if len(points) == 0 {
 		return nil, fmt.Errorf("no data points")
+	}
+	if opts == nil || opts.Region == nil {
+		return nil, fmt.Errorf("region is required")
 	}
 
 	region := opts.Region
@@ -71,7 +74,6 @@ func (cw *cubeWaffle) Run(points []Point, opts *Options) (*Result, error) {
 
 	demData := make([]float64, width*height)
 	uncData := make([]float64, width*height)
-	hypCount := make([]int, width*height)
 
 	for i := range demData {
 		demData[i] = noData
@@ -83,14 +85,19 @@ func (cw *cubeWaffle) Run(points []Point, opts *Options) (*Result, error) {
 		cellHypotheses[i] = nil
 	}
 
-	gt := region.GeoTransform()
 	searchRadius := region.XRes * 3
 	thuCells := int(math.Ceil(sParams.THU / region.XRes))
 
+	total := 3 * height
+	if err := startRun(opts, cw.Name(), total); err != nil {
+		return nil, err
+	}
 	for y := 0; y < height; y++ {
+		if err := dem.CheckCtx(opts.Ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", cw.Name(), err)
+		}
 		for x := 0; x < width; x++ {
-			geoX := gt[0] + float64(x)*gt[1] + float64(y)*gt[2]
-			geoY := gt[3] + float64(x)*gt[4] + float64(y)*gt[5]
+			geoX, geoY := region.PixelCenterGeo(x, y)
 
 			q := vec2.T{geoX, geoY}
 			searchR := searchRadius + sParams.THU
@@ -133,14 +140,17 @@ func (cw *cubeWaffle) Run(points []Point, opts *Options) (*Result, error) {
 			idx := y*width + x
 			demData[idx] = best.mean
 			uncData[idx] = best.stdDev
-			hypCount[idx] = best.count
 
 			cellHypotheses[idx] = h
 		}
+		dem.ReportProgress(opts.Progress, cw.Name(), y+1, total)
 	}
 
 	for iter := 0; iter < 2; iter++ {
 		for y := 0; y < height; y++ {
+			if err := dem.CheckCtx(opts.Ctx); err != nil {
+				return nil, fmt.Errorf("%s: %w", cw.Name(), err)
+			}
 			for x := 0; x < width; x++ {
 				idx := y*width + x
 				if demData[idx] != noData {
@@ -163,12 +173,14 @@ func (cw *cubeWaffle) Run(points []Point, opts *Options) (*Result, error) {
 					if best != nil {
 						demData[idx] = best.mean
 						uncData[idx] = best.stdDev * 1.5
-						hypCount[idx] = best.count
+						cellHypotheses[idx] = merged
 					}
 				}
 			}
+			dem.ReportProgress(opts.Progress, cw.Name(), height+iter*height+y+1, total)
 		}
 	}
+	finishRun(opts, cw.Name(), total)
 
 	return &Result{
 		DEM:    demData,
@@ -274,6 +286,9 @@ func selectHypothesisByIC(hypotheses []cubeHypothesis, depths, weights []float64
 				if h.stdDev > 1e-15 {
 					dev := (d - h.mean) / h.stdDev
 					logLikelihood -= 0.5 * dev * dev
+				} else if d != h.mean {
+					logLikelihood = math.Inf(-1)
+					break
 				}
 			}
 		} else {
@@ -293,13 +308,6 @@ func selectHypothesisByIC(hypotheses []cubeHypothesis, depths, weights []float64
 	}
 
 	return &hypotheses[bestIdx]
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 func (cw *cubeWaffle) Name() string { return cw.name }

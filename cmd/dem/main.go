@@ -57,11 +57,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "build datalist: %v\n", err)
 			os.Exit(1)
 		}
-		var paths []string
-		for _, e := range dl.Entries {
-			paths = append(paths, e.Path)
-		}
-		points, err = waffle.PointsFromMultiple(paths)
+		points, err = datalist.PointsFromDataList(dl)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "load points: %v\n", err)
 			os.Exit(1)

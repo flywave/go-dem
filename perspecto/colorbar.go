@@ -3,6 +3,7 @@ package perspecto
 import (
 	"image"
 	"image/color"
+	"image/draw"
 	"image/png"
 	"os"
 )
@@ -23,11 +24,7 @@ func ColorbarPNG(cmap []ColorStop, opts *ColorbarOptions) *image.RGBA {
 	barBottom := height - 20
 	barLeft := 40
 	barRight := width - 10
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			img.Set(x, y, color.RGBA{255, 255, 255, 255})
-		}
-	}
+	draw.Draw(img, img.Bounds(), image.NewUniform(color.RGBA{255, 255, 255, 255}), image.Point{}, draw.Src)
 
 	if len(cmap) == 0 {
 		return img

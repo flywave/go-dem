@@ -153,11 +153,15 @@ func TestDensityClusterHypotheses(t *testing.T) {
 	depths := []float64{10, 10.1, 10.2, 10.3, 20, 20.1, 20.2}
 	weights := []float64{1, 1, 1, 1, 1, 1, 1}
 	h := densityClusterHypotheses(depths, weights, sp)
-	if len(h) == 0 {
-		t.Error("should find at least one hypothesis")
+	if len(h) != 1 {
+		t.Fatalf("expected single cluster within bandwidth, got %d", len(h))
 	}
-	if len(h) >= 1 {
-		t.Logf("found %d clusters", len(h))
+	if h[0].count != 7 {
+		t.Errorf("expected cluster of 7, got %d", h[0].count)
+	}
+	expectedMean := (10 + 10.1 + 10.2 + 10.3 + 20 + 20.1 + 20.2) / 7
+	if math.Abs(h[0].mean-expectedMean) > 1e-9 {
+		t.Errorf("expected cluster mean %.4f, got %.4f", expectedMean, h[0].mean)
 	}
 }
 
@@ -207,13 +211,91 @@ func TestGridIndex_FindTriangles(t *testing.T) {
 	idx := buildTriangleGridIndex(triList, pts, 10)
 
 	tris := idx.findTriangles(2, 2)
-	_ = tris
+	if len(tris) == 0 {
+		t.Fatal("expected candidate triangles at (2,2)")
+	}
+	found := false
+	for _, ti := range tris {
+		if ti == 0 {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("triangle 0 should be a candidate at (2,2)")
+	}
+	if idx.findTriangles(-5, -5) != nil {
+		t.Error("expected nil candidates outside bbox (min side)")
+	}
+	if idx.findTriangles(11, 11) != nil {
+		t.Error("expected nil candidates outside bbox (max side)")
+	}
+}
+
+func TestLinearInterpGrid_OutsideBBox(t *testing.T) {
+	pts := []vec2.T{{0, 0}, {10, 0}, {0, 10}}
+	zs := []float64{1, 2, 3}
+	triList := [][3]int{{0, 1, 2}}
+	idx := buildTriangleGridIndex(triList, pts, 10)
+
+	val := linearInterpGrid(50, 50, triList, pts, zs, &idx)
+	if !math.IsNaN(val) {
+		t.Errorf("expected NaN outside point bbox, got %.2f", val)
+	}
+	val = linearInterpGrid(2, 2, triList, pts, zs, &idx)
+	if math.IsNaN(val) {
+		t.Error("expected valid interpolation inside triangle")
+	}
+}
+
+func TestWaffle_NilOptions(t *testing.T) {
+	pts := []Point{
+		{Position: vec2.T{1, 1}, Z: 1},
+		{Position: vec2.T{2, 2}, Z: 2},
+		{Position: vec2.T{3, 3}, Z: 3},
+		{Position: vec2.T{4, 4}, Z: 4},
+	}
+	for _, m := range ListMethods() {
+		w, err := New(m)
+		if err != nil {
+			t.Fatalf("new %s: %v", m, err)
+		}
+		res, err := w.Run(pts, nil)
+		if err == nil {
+			t.Errorf("%s: expected error for nil options", m)
+		}
+		if res != nil {
+			t.Errorf("%s: expected nil result for nil options", m)
+		}
+		res, err = w.Run(pts, &Options{})
+		if err == nil {
+			t.Errorf("%s: expected error for nil region", m)
+		}
+		if res != nil {
+			t.Errorf("%s: expected nil result for nil region", m)
+		}
+	}
+}
+
+func TestWaffle_EmptyPointsError(t *testing.T) {
+	for _, m := range ListMethods() {
+		w, err := New(m)
+		if err != nil {
+			t.Fatalf("new %s: %v", m, err)
+		}
+		res, err := w.Run(nil, &Options{Region: testRegion()})
+		if err == nil {
+			t.Errorf("%s: expected error for empty points", m)
+		}
+		if res != nil {
+			t.Errorf("%s: expected nil result for empty points", m)
+		}
+	}
 }
 
 func TestPointStructure(t *testing.T) {
 	p := Point{
-		Position: vec2.T{1, 2},
-		Z: 100,
+		Position:    vec2.T{1, 2},
+		Z:           100,
 		Uncertainty: 0.5,
 	}
 	if p.Position[0] != 1 || p.Position[1] != 2 {
@@ -255,11 +337,11 @@ func TestLaplaceWeightedInterp_ExactVertex(t *testing.T) {
 	}
 }
 
-func TestMax(t *testing.T) {
-	if max(5, 3) != 5 {
-		t.Errorf("max(5,3) = %d", max(5, 3))
+func TestMaxInt(t *testing.T) {
+	if maxInt(5, 3) != 5 {
+		t.Errorf("maxInt(5,3) = %d", maxInt(5, 3))
 	}
-	if max(-1, 0) != 0 {
-		t.Errorf("max(-1,0) = %d", max(-1, 0))
+	if maxInt(-1, 0) != 0 {
+		t.Errorf("maxInt(-1,0) = %d", maxInt(-1, 0))
 	}
 }

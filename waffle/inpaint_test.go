@@ -3,7 +3,64 @@ package waffle
 import (
 	"math"
 	"testing"
+
+	"github.com/flywave/go-dem"
+	"github.com/flywave/go3d/float64/vec2"
 )
+
+func TestInpaintWaffle_EmptyPoints(t *testing.T) {
+	iw, err := New(dem.MethodInpaint)
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	res, err := iw.Run(nil, &Options{Region: region()})
+	if err == nil {
+		t.Fatal("expected error for empty points, got nil")
+	}
+	if res != nil {
+		t.Fatal("expected nil result together with error")
+	}
+}
+
+func TestInpaintWaffle_NilRegion(t *testing.T) {
+	iw, err := New(dem.MethodInpaint)
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	pts := []Point{{Position: vec2.T{1, 1}, Z: 1}}
+	res, err := iw.Run(pts, nil)
+	if err == nil {
+		t.Fatal("expected error for nil options, got nil")
+	}
+	if res != nil {
+		t.Fatal("expected nil result together with error")
+	}
+}
+
+func TestInpaintWaffle_Basic(t *testing.T) {
+	iw, err := New(dem.MethodInpaint)
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	pts := []Point{
+		{Position: vec2.T{1.5, 1.5}, Z: 10},
+		{Position: vec2.T{8.5, 1.5}, Z: 20},
+		{Position: vec2.T{1.5, 8.5}, Z: 30},
+		{Position: vec2.T{8.5, 8.5}, Z: 40},
+	}
+	res, err := iw.Run(pts, &Options{Region: region()})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if len(res.DEM) != 100 {
+		t.Fatalf("expected 100 cells, got %d", len(res.DEM))
+	}
+	for i, v := range res.DEM {
+		if v == dem.DefaultNoData || math.IsNaN(v) {
+			t.Errorf("inpaint: cell %d not filled", i)
+		}
+	}
+}
 
 func TestFMMInpaint_NoHole(t *testing.T) {
 	w, h := 10, 10
@@ -56,8 +113,12 @@ func TestFMMInpaint_EdgeHole(t *testing.T) {
 	data[corner] = -9999
 
 	result := inpaintFMM(data, w, h, -9999)
-	if result[corner] != data[corner] {
-		t.Logf("edge hole: corner filler value = %.2f", result[corner])
+	val := result[corner]
+	if val == -9999 || math.IsNaN(val) {
+		t.Errorf("edge hole: corner not filled, got %v", val)
+	}
+	if math.Abs(val-50) > 25 {
+		t.Errorf("edge hole: expected ~50, got %.2f", val)
 	}
 }
 
@@ -291,13 +352,12 @@ func TestFMMInpaint_EdgePreservation(t *testing.T) {
 
 	leftEdge := result[5*w+5]
 	rightEdge := result[5*w+6]
-	t.Logf("edge L: %.2f, edge R: %.2f, diff: %.2f", leftEdge, rightEdge, rightEdge-leftEdge)
 
-	if leftEdge != -9999 && rightEdge != -9999 {
-		diff := math.Abs(rightEdge - leftEdge)
-		if diff > 0 {
-			t.Logf("edge contrast preserved: diff=%.2f (goal >0)", diff)
-		}
+	if leftEdge == -9999 || math.IsNaN(leftEdge) || rightEdge == -9999 || math.IsNaN(rightEdge) {
+		t.Fatalf("edge pixels not filled: left=%.2f right=%.2f", leftEdge, rightEdge)
+	}
+	if leftEdge >= rightEdge {
+		t.Errorf("edge contrast: expected left(%.2f) < right(%.2f)", leftEdge, rightEdge)
 	}
 }
 
@@ -321,9 +381,11 @@ func TestFMMInpaint_MountainRidge(t *testing.T) {
 	result := inpaintFMM(data, w, h, -9999)
 
 	centerVal := result[7*w+7]
-	expected := 1000*math.Exp(0) + 200
-	if centerVal != -9999 && !math.IsNaN(centerVal) {
-		t.Logf("mountain peak: expected %.0f, got %.2f (diff %.0f)", expected, centerVal, expected-centerVal)
+	if centerVal == -9999 || math.IsNaN(centerVal) {
+		t.Fatalf("mountain ridge: center not filled")
+	}
+	if centerVal < 300 {
+		t.Errorf("mountain ridge: center %.2f should carry ridge signal above baseline 200", centerVal)
 	}
 }
 
@@ -352,8 +414,6 @@ func benchmarkFMMInpaint(b *testing.B, size int, holeRatio float64) {
 	}
 }
 
-func BenchmarkFMMInpaint_50x50(b *testing.B)  { benchmarkFMMInpaint(b, 50, 0.3) }
+func BenchmarkFMMInpaint_50x50(b *testing.B)   { benchmarkFMMInpaint(b, 50, 0.3) }
 func BenchmarkFMMInpaint_100x100(b *testing.B) { benchmarkFMMInpaint(b, 100, 0.2) }
 func BenchmarkFMMInpaint_200x200(b *testing.B) { benchmarkFMMInpaint(b, 200, 0.1) }
-
-

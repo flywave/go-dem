@@ -37,16 +37,8 @@ func SubsamplePointCloud(opts *SubsampleOptions) error {
 		return fmt.Errorf("unknown subsample method: %s", opts.Method)
 	}
 
-	cfg := pointcloud.Metadata{
-		Input:  opts.InputPath,
-		Output: opts.OutputPath,
-	}
-	ctx := pointcloud.NewReaderContext(&cfg)
-	if ctx == nil {
-		return fmt.Errorf("failed to create reader context for %s", opts.InputPath)
-	}
-
 	subOpts := pointcloud.SubsampleOptions{
+		InputPath:  opts.InputPath,
 		Method:     method,
 		SampleSize: opts.SampleSize,
 		VoxelSize:  opts.VoxelSize,
@@ -54,7 +46,7 @@ func SubsamplePointCloud(opts *SubsampleOptions) error {
 		OutputPath: opts.OutputPath,
 	}
 
-	return pointcloud.Subsample(&ctx.ReaderContext, subOpts)
+	return pointcloud.Subsample(subOpts)
 }
 
 func VoxelDownsample(inputPath, outputPath string, voxelSize float64) error {

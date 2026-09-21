@@ -29,3 +29,6 @@ Thumbs.db
 
 # CGo cache
 /tests/*.out
+
+# CLI binary
+/dem

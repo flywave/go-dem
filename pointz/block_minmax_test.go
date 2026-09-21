@@ -62,7 +62,15 @@ func TestBlockMinMax_Invert(t *testing.T) {
 		}
 	}
 	if kept != 1 {
-		t.Logf("invert: kept %d points (expected 1)", kept)
+		t.Errorf("invert: kept %d points (expected 1)", kept)
+	}
+}
+
+func TestBlockMinMax_NilOptions(t *testing.T) {
+	pts := []Point3D{{X: 0, Y: 0, Z: 10}}
+	mask := BlockMinMaxFilter(pts, nil)
+	if mask == nil || len(mask) != 1 || mask[0] {
+		t.Error("nil opts should keep the single point")
 	}
 }
 

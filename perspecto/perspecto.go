@@ -1,22 +1,22 @@
 package perspecto
 
 type Options struct {
-	NoData   float64
-	ZFactor  float64
-	Azimuth  float64
-	Altitude float64
-	Colormap []ColorStop
+	NoData     float64
+	ZFactor    float64
+	Azimuth    float64
+	Altitude   float64
+	Colormap   []ColorStop
 	SlopeUnits string
 }
 
 type HistogramOptions struct {
-	Bins     int
-	Type     string
-	Width    int
-	Height   int
-	Title    string
+	Bins      int
+	Type      string
+	Width     int
+	Height    int
+	Title     string
 	ShowStats bool
-	NoData   float64
+	NoData    float64
 }
 
 type ColorbarOptions struct {
@@ -26,8 +26,8 @@ type ColorbarOptions struct {
 }
 
 type ColorStop struct {
-	Value    float64
-	R, G, B  uint8
+	Value   float64
+	R, G, B uint8
 }
 
 func DefaultTerrainColormap() []ColorStop {
@@ -87,7 +87,11 @@ func InterpolateColor(cmap []ColorStop, val float64) (uint8, uint8, uint8) {
 	}
 	for i := 0; i < len(cmap)-1; i++ {
 		if val >= cmap[i].Value && val <= cmap[i+1].Value {
-			f := (val - cmap[i].Value) / (cmap[i+1].Value - cmap[i].Value)
+			span := cmap[i+1].Value - cmap[i].Value
+			if span == 0 {
+				return cmap[i+1].R, cmap[i+1].G, cmap[i+1].B
+			}
+			f := (val - cmap[i].Value) / span
 			r := uint8(float64(cmap[i].R) + f*float64(int(cmap[i+1].R)-int(cmap[i].R)))
 			g := uint8(float64(cmap[i].G) + f*float64(int(cmap[i+1].G)-int(cmap[i].G)))
 			b := uint8(float64(cmap[i].B) + f*float64(int(cmap[i+1].B)-int(cmap[i].B)))

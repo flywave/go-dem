@@ -6,11 +6,6 @@ import (
 	"github.com/flywave/go3d/float64/vec2"
 )
 
-type triangleIndex struct {
-	cx, cy float64
-	pts    [3]int
-}
-
 func nearestInterp(x, y float64, pts []vec2.T, zs []float64) float64 {
 	if len(pts) == 0 {
 		return math.NaN()
@@ -34,10 +29,7 @@ func linearInterpGrid(x, y float64, triList [][3]int, pts []vec2.T, zs []float64
 
 	candidateTris := gridIdx.findTriangles(x, y)
 	if candidateTris == nil {
-		candidateTris = make([]int, len(triList))
-		for i := range triList {
-			candidateTris[i] = i
-		}
+		return math.NaN()
 	}
 	for _, ti := range candidateTris {
 		if ti >= len(triList) {
@@ -80,38 +72,6 @@ func distSq(x1, y1, x2, y2 float64) float64 {
 	dx := x1 - x2
 	dy := y1 - y2
 	return dx*dx + dy*dy
-}
-
-func interpolateLaplace(x, y float64, pts []vec2.T, zs []float64, tris []triangleIndex) float64 {
-	found, p0, p1, p2, z0, z1, z2 := findContainingTriangle(x, y, pts, zs, tris)
-	if !found {
-		return math.NaN()
-	}
-	return laplaceWeightedInterp(x, y, p0, p1, p2, z0, z1, z2)
-}
-
-func findContainingTriangle(x, y float64, pts []vec2.T, zs []float64, tris []triangleIndex) (bool, vec2.T, vec2.T, vec2.T, float64, float64, float64) {
-	bestTri := -1
-	var bestDist float64
-	for i, tri := range tris {
-		dx := x - tri.cx
-		dy := y - tri.cy
-		dist := dx*dx + dy*dy
-		if bestTri < 0 || dist < bestDist {
-			t0, t1, t2 := tri.pts[0], tri.pts[1], tri.pts[2]
-			_, inside := barycentricInterp(x, y, pts[t0], pts[t1], pts[t2], zs[t0], zs[t1], zs[t2])
-			if inside {
-				bestTri = i
-				bestDist = dist
-			}
-		}
-	}
-	if bestTri >= 0 {
-		tri := tris[bestTri]
-		t0, t1, t2 := tri.pts[0], tri.pts[1], tri.pts[2]
-		return true, pts[t0], pts[t1], pts[t2], zs[t0], zs[t1], zs[t2]
-	}
-	return false, vec2.T{}, vec2.T{}, vec2.T{}, 0, 0, 0
 }
 
 func laplaceWeightedInterp(x, y float64, p0, p1, p2 vec2.T, z0, z1, z2 float64) float64 {

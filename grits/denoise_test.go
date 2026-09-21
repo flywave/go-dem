@@ -1,6 +1,7 @@
 package grits
 
 import (
+	"math"
 	"testing"
 
 	"github.com/flywave/go-dem"
@@ -26,6 +27,26 @@ func TestDenoise_Median(t *testing.T) {
 		t.Logf("denoise median: spike reduced %.0f -> %.2f", data[5*w+5], res[5*w+5])
 	} else {
 		t.Errorf("spike not reduced: %.0f -> %.2f", data[5*w+5], res[5*w+5])
+	}
+}
+
+func TestDenoise_DefaultKernelSize(t *testing.T) {
+	w, h := 10, 10
+	nd := -9999.0
+	data := makeFlatDEM(w, h, 100)
+	data[5*w+5] = 9999
+
+	reg := dem.NewRegionFromBBox(0, 0, float64(w), float64(h), nil, 1, 1)
+	d := &denoiseFilter{}
+	res, err := d.Run(data, reg, &Options{NoData: &nd})
+	if err != nil {
+		t.Fatalf("denoise default error: %v", err)
+	}
+	if res[5*w+5] >= data[5*w+5] {
+		t.Errorf("default kernel should be normalized to 3 and remove the spike, got %.2f", res[5*w+5])
+	}
+	if math.Abs(res[5*w+5]-100) > 1e-9 {
+		t.Errorf("median of flat surroundings should be 100, got %.2f", res[5*w+5])
 	}
 }
 

@@ -21,6 +21,9 @@ func BlockMinMaxFilter(points []Point3D, opts *BlockMinMaxOptions) []bool {
 	if len(points) == 0 {
 		return nil
 	}
+	if opts == nil {
+		opts = &BlockMinMaxOptions{}
+	}
 	res := opts.Resolution
 	if res <= 0 {
 		res = 10

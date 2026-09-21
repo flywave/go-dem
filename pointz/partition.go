@@ -7,9 +7,9 @@ import (
 type PartitionPlan string
 
 const (
-	PartitionOne       PartitionPlan = "one"
-	PartitionUniform   PartitionPlan = "uniform"
-	PartitionMedian    PartitionPlan = "median"
+	PartitionOne     PartitionPlan = "one"
+	PartitionUniform PartitionPlan = "uniform"
+	PartitionMedian  PartitionPlan = "median"
 )
 
 type Partition struct {
@@ -93,6 +93,9 @@ func (qp *quadPartitioner) Execute(points []Point3D, minPoints, minArea float64)
 func (qp *quadPartitioner) divideUntil(points []Point3D, bounds BoxBounds, minPoints, minArea float64) []Partition {
 	if len(points) == 0 {
 		return nil
+	}
+	if qp.plan == PartitionOne {
+		return []Partition{{Points: points, Bounds: bounds}}
 	}
 
 	cx, cy := bounds.Center()

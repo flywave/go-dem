@@ -74,6 +74,19 @@ func TestRegionGeoTransform(t *testing.T) {
 	}
 }
 
+func TestRegionPixelCenterGeo(t *testing.T) {
+	srs := geo.NewProj("EPSG:4326")
+	r := NewRegionFromBBox(-125, 40, -122, 43, srs, 1, 1)
+	gx, gy := r.PixelCenterGeo(0, 0)
+	if math.Abs(gx-(-124.5)) > 1e-10 || math.Abs(gy-42.5) > 1e-10 {
+		t.Errorf("pixel (0,0) center: expected (-124.5,42.5), got (%f,%f)", gx, gy)
+	}
+	gx, gy = r.PixelCenterGeo(2, 3)
+	if math.Abs(gx-(-122.5)) > 1e-10 || math.Abs(gy-39.5) > 1e-10 {
+		t.Errorf("pixel (2,3) center: expected (-122.5,39.5), got (%f,%f)", gx, gy)
+	}
+}
+
 func TestRegionTransformTo(t *testing.T) {
 	srcSRS := geo.NewProj("EPSG:4326")
 	r := NewRegionFromBBox(-125, 40, -122, 43, srcSRS, 0.01, 0.01)
@@ -99,6 +112,75 @@ func TestRegionZeroResolution(t *testing.T) {
 	}
 	if r.YRes != 0 {
 		t.Errorf("yres should be 0 when xres is 0, got %f", r.YRes)
+	}
+	if r.XSize != 0 || r.YSize != 0 {
+		t.Errorf("zero resolution should give zero sizes, got %dx%d", r.XSize, r.YSize)
+	}
+}
+
+func TestNewRegionFromBBox_ZeroXResGuard(t *testing.T) {
+	srs := geo.NewProj("EPSG:4326")
+	r := NewRegionFromBBox(0, 0, 1, 1, srs, 0, 0.5)
+	if r.XSize != 0 || r.YSize != 0 {
+		t.Errorf("expected zero sizes when xres is 0, got %dx%d", r.XSize, r.YSize)
+	}
+	if r.YRes != 0.5 {
+		t.Errorf("yres should be preserved, got %f", r.YRes)
+	}
+}
+
+func TestNewRegionFromString_ParseError(t *testing.T) {
+	srs := geo.NewProj("EPSG:4326")
+	_, err := NewRegionFromString("abc/def/ghi/jkl", srs, 0.01, 0.01)
+	if err == nil {
+		t.Error("expected error for non-numeric region")
+	}
+}
+
+func TestRegionTransformTo3857RoundTrip(t *testing.T) {
+	src := geo.NewProj("EPSG:4326")
+	dst := geo.NewProj("EPSG:3857")
+	r := NewRegionFromBBox(100, 40, 103, 43, src, 0.01, 0.01)
+
+	r3857 := r.TransformTo(dst)
+	if r3857 == nil {
+		t.Fatal("3857 region is nil")
+	}
+	if !r3857.IsValid() {
+		t.Fatalf("3857 region invalid: %s", r3857)
+	}
+	expectedXRes := 0.01 * 111320 * math.Cos(41.5*math.Pi/180)
+	if math.Abs(r3857.XRes-expectedXRes) > expectedXRes*0.01 {
+		t.Errorf("3857 xres: expected ~%.4f, got %.4f", expectedXRes, r3857.XRes)
+	}
+	expectedYRes := 0.01 * 111320
+	if math.Abs(r3857.YRes-expectedYRes) > expectedYRes*0.001 {
+		t.Errorf("3857 yres: expected ~%.4f, got %.4f", expectedYRes, r3857.YRes)
+	}
+
+	rBack := r3857.TransformTo(src)
+	if rBack == nil {
+		t.Fatal("back-transformed region is nil")
+	}
+	if !rBack.IsValid() {
+		t.Fatalf("back-transformed region invalid: %s", rBack)
+	}
+	if math.Abs(rBack.XRes-0.01) > 1e-8 {
+		t.Errorf("roundtrip xres: expected ~0.01, got %.10f", rBack.XRes)
+	}
+	if math.Abs(rBack.YRes-0.01) > 1e-8 {
+		t.Errorf("roundtrip yres: expected ~0.01, got %.10f", rBack.YRes)
+	}
+	b := rBack.BBox()
+	if math.Abs(b.Min[0]-100) > 1e-5 || math.Abs(b.Max[0]-103) > 1e-5 ||
+		math.Abs(b.Min[1]-40) > 1e-5 || math.Abs(b.Max[1]-43) > 1e-5 {
+		t.Errorf("roundtrip bbox drifted: %v", b)
+	}
+	if rBack.XSize < 298 || rBack.XSize > 302 {
+		t.Errorf("roundtrip xsize: expected ~300, got %d", rBack.XSize)
+	}
+	if rBack.YSize < 298 || rBack.YSize > 302 {
+		t.Errorf("roundtrip ysize: expected ~300, got %d", rBack.YSize)
 	}
 }
 
@@ -385,6 +467,15 @@ func TestRegionGeoTransformFromCount(t *testing.T) {
 	}
 }
 
+func TestRegionGeoTransformFromCount_ZeroCount(t *testing.T) {
+	srs := geo.NewProj("EPSG:4326")
+	r := NewRegionFromBBox(0, 0, 10, 10, srs, 1, 1)
+	gt := r.GeoTransformFromCount(0, 0)
+	if gt[1] != 0 || gt[5] != 0 {
+		t.Errorf("zero counts should give zero increments, got %f/%f", gt[1], gt[5])
+	}
+}
+
 func TestRegionFormat(t *testing.T) {
 	srs := geo.NewProj("EPSG:4326")
 	r := NewRegionFromBBox(-125, 40, -122, 43, srs, 1, 1)
@@ -433,6 +524,11 @@ func TestRegionChunk(t *testing.T) {
 	}
 	if chunks[3].Extent.BBox.Max[0] != 10 || chunks[3].Extent.BBox.Max[1] != 10 {
 		t.Errorf("chunk[3] max: expected (10,10), got (%f,%f)", chunks[3].Extent.BBox.Max[0], chunks[3].Extent.BBox.Max[1])
+	}
+	for i, c := range chunks {
+		if c.XSize != 5 || c.YSize != 5 {
+			t.Errorf("chunk[%d] size: expected 5x5, got %dx%d", i, c.XSize, c.YSize)
+		}
 	}
 }
 

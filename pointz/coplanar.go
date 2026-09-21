@@ -2,6 +2,7 @@ package pointz
 
 import (
 	"math"
+	"sort"
 )
 
 type CoplanarOptions struct {
@@ -14,6 +15,9 @@ type CoplanarOptions struct {
 func CoplanarFilter(points []Point3D, opts *CoplanarOptions) []bool {
 	if len(points) == 0 {
 		return nil
+	}
+	if opts == nil {
+		opts = &CoplanarOptions{}
 	}
 	radius := opts.Radius
 	if radius <= 0 {
@@ -135,13 +139,9 @@ func buildKDTree2D(pts []vec2, idxs []int, depth int) *kdNode2D {
 }
 
 func sortIdxsByAxis(pts []vec2, idxs []int, axis int) {
-	for i := 0; i < len(idxs); i++ {
-		for j := i + 1; j < len(idxs); j++ {
-			if pts[idxs[i]][axis] > pts[idxs[j]][axis] {
-				idxs[i], idxs[j] = idxs[j], idxs[i]
-			}
-		}
-	}
+	sort.Slice(idxs, func(i, j int) bool {
+		return pts[idxs[i]][axis] < pts[idxs[j]][axis]
+	})
 }
 
 func (t *kdTree2D) radiusSearch(qx, qy, radius float64) ([]int, []float64) {
@@ -163,7 +163,10 @@ func (t *kdTree2D) radiusSearch(qx, qy, radius float64) ([]int, []float64) {
 	return idxs, dists
 }
 
-func (t *kdTree2D) radiusSearchNode(node *kdNode2D, qx, qy, r2 float64, depth int, results *[]struct{ idx int; dist float64 }) {
+func (t *kdTree2D) radiusSearchNode(node *kdNode2D, qx, qy, r2 float64, depth int, results *[]struct {
+	idx  int
+	dist float64
+}) {
 	if node == nil {
 		return
 	}
@@ -193,6 +196,37 @@ func (t *kdTree2D) radiusSearchNode(node *kdNode2D, qx, qy, r2 float64, depth in
 	}
 }
 
-func (t *kdTree2D) knnSearch(qx, qy float64, k int) []int {
-	return nil
+func (t *kdTree2D) radiusCount(qx, qy, radius float64) int {
+	if t.root == nil || radius <= 0 {
+		return 0
+	}
+	return t.radiusCountNode(t.root, qx, qy, radius*radius, 0)
+}
+
+func (t *kdTree2D) radiusCountNode(node *kdNode2D, qx, qy, r2 float64, depth int) int {
+	if node == nil {
+		return 0
+	}
+	dx := qx - node.pt[0]
+	dy := qy - node.pt[1]
+	count := 0
+	if dx*dx+dy*dy < r2 {
+		count++
+	}
+	axis := depth % 2
+	diff := qx - node.pt[0]
+	if axis == 1 {
+		diff = qy - node.pt[1]
+	}
+	var first, second *kdNode2D
+	if diff < 0 {
+		first, second = node.left, node.right
+	} else {
+		first, second = node.right, node.left
+	}
+	count += t.radiusCountNode(first, qx, qy, r2, depth+1)
+	if diff*diff <= r2 {
+		count += t.radiusCountNode(second, qx, qy, r2, depth+1)
+	}
+	return count
 }

@@ -118,6 +118,23 @@ func TestPartitionPlan_One(t *testing.T) {
 	}
 }
 
+func TestPartitionPlan_OneDense(t *testing.T) {
+	pts := make([]Point3D, 0, 16)
+	for y := 0; y < 4; y++ {
+		for x := 0; x < 4; x++ {
+			pts = append(pts, Point3D{X: float64(x), Y: float64(y), Z: float64(x + y)})
+		}
+	}
+	qp := SelectPartitionPlan(PartitionOne, pts)
+	parts := qp.Execute(pts, 2, 1)
+	if len(parts) != 1 {
+		t.Fatalf("PartitionOne should never split, got %d partitions", len(parts))
+	}
+	if len(parts[0].Points) != 16 {
+		t.Errorf("expected 16 points in the single partition, got %d", len(parts[0].Points))
+	}
+}
+
 func TestPartitionPlan_UniformMinimumArea(t *testing.T) {
 	pts := make([]Point3D, 8)
 	for i := 0; i < 8; i++ {
@@ -126,7 +143,7 @@ func TestPartitionPlan_UniformMinimumArea(t *testing.T) {
 	qp := SelectPartitionPlan(PartitionUniform, pts)
 	parts := qp.Execute(pts, 2, 100)
 	if len(parts) != 1 {
-		t.Logf("uniform with large min_area: %d partition(s)", len(parts))
+		t.Errorf("uniform with large min_area: expected 1 partition, got %d", len(parts))
 	}
 }
 
@@ -138,6 +155,6 @@ func TestPartitionPlan_MedianMinimumPoints(t *testing.T) {
 	qp := SelectPartitionPlan(PartitionMedian, pts)
 	parts := qp.Execute(pts, 100, 1)
 	if len(parts) != 1 {
-		t.Logf("median with large min_points: %d partition(s)", len(parts))
+		t.Errorf("median with large min_points: expected 1 partition, got %d", len(parts))
 	}
 }

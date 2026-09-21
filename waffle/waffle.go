@@ -1,6 +1,7 @@
 package waffle
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/flywave/go-dem"
@@ -23,6 +24,8 @@ type Options struct {
 	ChunkX       int
 	ChunkY       int
 	Threads      int
+	Progress     dem.ProgressFunc
+	Ctx          context.Context
 }
 
 type Waffle interface {
@@ -67,3 +70,15 @@ type baseWaffle struct {
 }
 
 func (b *baseWaffle) Name() string { return b.name }
+
+func startRun(opts *Options, name string, total int) error {
+	dem.ReportProgress(opts.Progress, name, 0, total)
+	if err := dem.CheckCtx(opts.Ctx); err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+	return nil
+}
+
+func finishRun(opts *Options, name string, total int) {
+	dem.ReportProgress(opts.Progress, name, total, total)
+}

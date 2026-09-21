@@ -63,6 +63,7 @@ func fitPlaneLMedS(points []Point3D, iterations int) Plane3D {
 
 	best := Plane3D{}
 	bestMedian := math.MaxFloat64
+	dists := make([]float64, n)
 
 	for i := 0; i < iterations; i++ {
 		idx0 := rand.Intn(n)
@@ -88,7 +89,6 @@ func fitPlaneLMedS(points []Point3D, iterations int) Plane3D {
 		nz /= norm
 		d := -(nx*p0.X + ny*p0.Y + nz*p0.Z)
 
-		dists := make([]float64, n)
 		for j, p := range points {
 			dists[j] = math.Abs(nx*p.X + ny*p.Y + nz*p.Z + d)
 		}

@@ -30,12 +30,15 @@ func (f *clipFilter) Run(data []float64, region *dem.Region, opts *Options) ([]f
 		return nil, err
 	}
 
-	gt := region.GeoTransform()
-
+	if err := startFilter(opts, f.Name(), h); err != nil {
+		return nil, err
+	}
 	for y := 0; y < h; y++ {
+		if err := dem.CheckCtx(opts.Ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", f.Name(), err)
+		}
 		for x := 0; x < w; x++ {
-			geoX := gt[0] + float64(x)*gt[1]
-			geoY := gt[3] + float64(y)*gt[5]
+			geoX, geoY := region.PixelCenterGeo(x, y)
 
 			if geoX < xMin || geoX > xMax || geoY < yMin || geoY > yMax {
 				result[y*w+x] = noData
@@ -46,8 +49,10 @@ func (f *clipFilter) Run(data []float64, region *dem.Region, opts *Options) ([]f
 				result[y*w+x] = noData
 			}
 		}
+		dem.ReportProgress(opts.Progress, f.Name(), y+1, h)
 	}
 
+	finishFilter(opts, f.Name(), h)
 	return result, nil
 }
 
@@ -115,7 +120,7 @@ func parsePolygonWKT(wkt string) (ring, float64, float64, float64, float64, erro
 		xi, errX := strconv.ParseFloat(parts[i], 64)
 		yi, errY := strconv.ParseFloat(parts[i+1], 64)
 		if errX != nil || errY != nil {
-			continue
+			return nil, 0, 0, 0, 0, fmt.Errorf("invalid coordinate pair %q %q in WKT", parts[i], parts[i+1])
 		}
 		poly = append(poly, struct{ x, y float64 }{xi, yi})
 		if xi < xMin {

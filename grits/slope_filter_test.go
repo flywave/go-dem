@@ -44,8 +44,8 @@ func TestSlopeFilter_SteepRemoved(t *testing.T) {
 			masked++
 		}
 	}
-	if masked > 0 {
-		t.Logf("%d steep pixels masked", masked)
+	if masked == 0 {
+		t.Error("steep pixels below the steep row should be masked")
 	}
 }
 
@@ -70,7 +70,7 @@ func TestComputeSlopeDegrees(t *testing.T) {
 	w, h := 10, 10
 	nd := -9999.0
 	data := makeFlatDEM(w, h, 100)
-	slope := computeSlopeDegrees(data, w, h, 1.0, nd)
+	slope := computeSlopeDegrees(data, w, h, 1.0, 1.0, nd)
 	for y := 1; y < h-1; y++ {
 		for x := 1; x < w-1; x++ {
 			if math.Abs(slope[y*w+x]) > 1e-6 {
@@ -90,8 +90,25 @@ func TestComputeSlopeDegrees_45Deg(t *testing.T) {
 		}
 	}
 
-	slope := computeSlopeDegrees(data, w, h, 1.0, nd)
-	if slope[w+1] > 0 {
-		t.Logf("ramp x-direction: slope at (1,1) = %.4f deg", slope[w+1])
+	slope := computeSlopeDegrees(data, w, h, 1.0, 1.0, nd)
+	if math.Abs(slope[w+1]-45) > 1e-6 {
+		t.Errorf("ramp x-direction with resX=resY=1: slope at (1,1) = %.4f, want 45", slope[w+1])
+	}
+}
+
+func TestComputeSlopeDegrees_Anisotropic(t *testing.T) {
+	w, h := 5, 5
+	nd := -9999.0
+	data := makeFlatDEM(w, h, 0)
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			data[y*w+x] = float64(y * 10)
+		}
+	}
+
+	slope := computeSlopeDegrees(data, w, h, 1.0, 2.0, nd)
+	expected := math.Atan(20.0/(2*2.0)) * 180 / math.Pi
+	if math.Abs(slope[w+1]-expected) > 1e-6 {
+		t.Errorf("y-ramp with resX=1, resY=2: slope at (1,1) = %.6f, want %.6f", slope[w+1], expected)
 	}
 }

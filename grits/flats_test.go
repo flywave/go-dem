@@ -22,18 +22,11 @@ func TestFlats_Basic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("flats error: %v", err)
 	}
-	masked := 0
-	for y := 3; y <= 6; y++ {
-		for x := 3; x <= 6; x++ {
-			if res[y*w+x] == nd {
-				masked++
-			}
-		}
+	if res[0] != nd {
+		t.Errorf("elevation 100 covers %d pixels (>%d), should be masked, got %.2f", 84, 5, res[0])
 	}
-	if masked > 0 {
-		t.Logf("flats: %d flat pixels masked", masked)
-	} else {
-		t.Log("flats: no flat pixels masked (may need higher threshold)")
+	if res[4*w+4] != nd {
+		t.Errorf("elevation 50 covers %d pixels (>%d), should be masked, got %.2f", 16, 5, res[4*w+4])
 	}
 }
 
@@ -53,6 +46,12 @@ func TestFlats_AutoThreshold(t *testing.T) {
 	}
 	if len(res) != len(data) {
 		t.Errorf("output size mismatch")
+	}
+	for i, v := range res {
+		if v != data[i] {
+			t.Errorf("with auto threshold (99th pct) no pixel should be masked, pixel %d changed", i)
+			break
+		}
 	}
 }
 

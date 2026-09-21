@@ -56,19 +56,29 @@ func TestBuildGridForBounds_FiltersClose(t *testing.T) {
 	})
 	cloud := []Point3D{{X: 2.5, Y: 2.5}, {X: 7.5, Y: 7.5}}
 	grid := buildGridForBounds(bounds, hull, cloud, 1)
-	distanceOK := true
+	if len(grid) == 0 {
+		t.Fatal("grid should keep points far from the cloud")
+	}
 	for _, g := range grid {
 		for _, c := range cloud {
 			dx := g.X - c.X
 			dy := g.Y - c.Y
 			d := dx*dx + dy*dy
 			if d < 1.0 {
-				distanceOK = false
+				t.Errorf("grid point (%.1f,%.1f) is within distance 1 of cloud (%.1f,%.1f)", g.X, g.Y, c.X, c.Y)
 			}
 		}
 	}
-	if !distanceOK && len(grid) > 0 {
-		t.Log("buildGridForBounds: some grid points close to cloud (expected for this spacing)")
+}
+
+func TestBuildGridForBounds_GridCap(t *testing.T) {
+	bounds := BoxBounds{XMin: 0, XMax: 100000, YMin: 0, YMax: 100000}
+	hull := computeConvexHull([]Point3D{
+		{X: 0, Y: 0}, {X: 100000, Y: 0}, {X: 100000, Y: 100000}, {X: 0, Y: 100000},
+	})
+	grid := buildGridForBounds(bounds, hull, nil, 0.001)
+	if grid != nil {
+		t.Errorf("huge grid should be rejected by the cap, got %d points", len(grid))
 	}
 }
 

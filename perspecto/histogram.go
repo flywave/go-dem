@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
 	"image/png"
 	"math"
 	"os"
@@ -28,26 +29,33 @@ func HistogramPNG(data []float64, opts *HistogramOptions) (*image.RGBA, error) {
 		nd = -9999
 	}
 
-	var vals []float64
+	vals := make([]float64, 0, len(data))
+	minV, maxV := math.Inf(1), math.Inf(-1)
 	for _, v := range data {
 		if v == nd || math.IsNaN(v) {
 			continue
 		}
 		vals = append(vals, v)
+		if v < minV {
+			minV = v
+		}
+		if v > maxV {
+			maxV = v
+		}
 	}
 	if len(vals) == 0 {
 		return nil, fmt.Errorf("no valid data")
 	}
-
-	sort.Float64s(vals)
-	minV, maxV := vals[0], vals[len(vals)-1]
+	if opts.ShowStats {
+		sort.Float64s(vals)
+	}
 	if maxV-minV == 0 {
 		maxV = minV + 1
 	}
 
 	hist := make([]int, bins)
 	for _, v := range vals {
-		idx := int((v - minV) / (maxV - minV) * float64(bins-1))
+		idx := int((v - minV) / (maxV - minV) * float64(bins))
 		if idx < 0 {
 			idx = 0
 		}
@@ -73,11 +81,9 @@ func HistogramPNG(data []float64, opts *HistogramOptions) (*image.RGBA, error) {
 	bar := color.RGBA{70, 130, 180, 200}
 	line := color.RGBA{200, 50, 50, 255}
 
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			img.Set(x, y, bg)
-		}
-	}
+	draw.Draw(img, img.Bounds(), image.NewUniform(bg), image.Point{}, draw.Src)
+
+	stride := img.Stride
 
 	margin := 60
 	plotW := width - 2*margin
@@ -87,11 +93,24 @@ func HistogramPNG(data []float64, opts *HistogramOptions) (*image.RGBA, error) {
 	plotLeft := margin
 	plotRight := width - margin
 
-	for x := plotLeft; x <= plotRight; x++ {
-		img.Set(x, plotBottom, fg)
+	if plotBottom >= 0 {
+		off := plotBottom*stride + plotLeft*4
+		for x := plotLeft; x <= plotRight; x++ {
+			img.Pix[off] = fg.R
+			img.Pix[off+1] = fg.G
+			img.Pix[off+2] = fg.B
+			img.Pix[off+3] = fg.A
+			off += 4
+		}
 	}
-	for y := plotTop; y <= plotBottom; y++ {
-		img.Set(plotLeft, y, fg)
+	if plotLeft < width {
+		for y := plotTop; y <= plotBottom; y++ {
+			off := y*stride + plotLeft*4
+			img.Pix[off] = fg.R
+			img.Pix[off+1] = fg.G
+			img.Pix[off+2] = fg.B
+			img.Pix[off+3] = fg.A
+		}
 	}
 
 	isCDF := opts.Type == "cdf"
@@ -106,8 +125,13 @@ func HistogramPNG(data []float64, opts *HistogramOptions) (*image.RGBA, error) {
 			barH := int(frac * float64(plotH))
 			barY := plotBottom - barH
 			for x := x0; x < x1 && x <= plotRight; x++ {
+				off := barY*stride + x*4
 				for y := barY; y <= plotBottom; y++ {
-					img.Set(x, y, bar)
+					img.Pix[off] = bar.R
+					img.Pix[off+1] = bar.G
+					img.Pix[off+2] = bar.B
+					img.Pix[off+3] = bar.A
+					off += stride
 				}
 			}
 		}
@@ -123,8 +147,13 @@ func HistogramPNG(data []float64, opts *HistogramOptions) (*image.RGBA, error) {
 				barH = 1
 			}
 			for dx := 0; dx < barW && x+dx <= plotRight; dx++ {
+				off := (plotBottom-barH+1)*stride + (x+dx)*4
 				for dy := 0; dy < barH; dy++ {
-					img.Set(x+dx, plotBottom-dy, bar)
+					img.Pix[off] = bar.R
+					img.Pix[off+1] = bar.G
+					img.Pix[off+2] = bar.B
+					img.Pix[off+3] = bar.A
+					off += stride
 				}
 			}
 		}
@@ -141,7 +170,11 @@ func HistogramPNG(data []float64, opts *HistogramOptions) (*image.RGBA, error) {
 			for dy := -2; dy <= 2; dy++ {
 				y := plotBottom/2 + dy
 				if y >= 0 && y < height {
-					img.Set(meanX, y, line)
+					off := y*stride + meanX*4
+					img.Pix[off] = line.R
+					img.Pix[off+1] = line.G
+					img.Pix[off+2] = line.B
+					img.Pix[off+3] = line.A
 				}
 			}
 		}
@@ -152,7 +185,11 @@ func HistogramPNG(data []float64, opts *HistogramOptions) (*image.RGBA, error) {
 			for dy := -2; dy <= 2; dy++ {
 				y := plotBottom*3/4 + dy
 				if y >= 0 && y < height {
-					img.Set(medX, y, color.RGBA{50, 180, 50, 255})
+					off := y*stride + medX*4
+					img.Pix[off] = 50
+					img.Pix[off+1] = 180
+					img.Pix[off+2] = 50
+					img.Pix[off+3] = 255
 				}
 			}
 		}

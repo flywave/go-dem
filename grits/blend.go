@@ -1,6 +1,7 @@
 package grits
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/flywave/go-dem"
@@ -29,22 +30,42 @@ func (f *blendFilter) Run(data []float64, region *dem.Region, opts *Options) ([]
 		blendWidth = float64(region.XRes * 10)
 	}
 
-	if maskRegion.XSize != region.XSize || maskRegion.YSize != region.YSize {
-		return linearBlendResampled(data, region, maskData, maskRegion, noData, blendWidth), nil
+	if err := startFilter(opts, f.Name(), region.YSize); err != nil {
+		return nil, err
 	}
-
-	return linearBlend(data, maskData, region, noData, blendWidth), nil
+	var result []float64
+	if maskRegion.XSize != region.XSize || maskRegion.YSize != region.YSize {
+		result, err = linearBlendResampledOpts(data, region, maskData, maskRegion, noData, blendWidth, opts, f.Name())
+	} else {
+		result, err = linearBlendOpts(data, maskData, region, noData, blendWidth, opts, f.Name())
+	}
+	if err != nil {
+		return nil, err
+	}
+	finishFilter(opts, f.Name(), region.YSize)
+	return result, nil
 }
 
-func linearBlend(dem, mask []float64, region *dem.Region, noData, blendWidth float64) []float64 {
+func linearBlend(demData, mask []float64, region *dem.Region, noData, blendWidth float64) []float64 {
+	result, _ := linearBlendOpts(demData, mask, region, noData, blendWidth, nil, "")
+	return result
+}
+
+func linearBlendOpts(demData, mask []float64, region *dem.Region, noData, blendWidth float64, opts *Options, stage string) ([]float64, error) {
+	prog, ctx := progressOf(opts)
 	w, h := region.XSize, region.YSize
 	result := make([]float64, w*h)
-	copy(result, dem)
+	copy(result, demData)
+
+	distMap := dem.ComputeEuclideanDistance(mask, w, h, noData, region.XRes, region.YRes)
 
 	for y := 0; y < h; y++ {
+		if err := dem.CheckCtx(ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", stage, err)
+		}
 		for x := 0; x < w; x++ {
 			idx := y*w + x
-			demVal := dem[idx]
+			demVal := demData[idx]
 			maskVal := mask[idx]
 
 			if demVal == noData || math.IsNaN(demVal) {
@@ -58,10 +79,7 @@ func linearBlend(dem, mask []float64, region *dem.Region, noData, blendWidth flo
 				continue
 			}
 
-			dist := edgeDistance(idx, mask, w, h, noData)
-			if dist < 0 {
-				continue
-			}
+			dist := distMap[idx]
 			if dist >= blendWidth {
 				continue
 			}
@@ -69,30 +87,40 @@ func linearBlend(dem, mask []float64, region *dem.Region, noData, blendWidth flo
 			t := dist / blendWidth
 			result[idx] = demVal*(1-t) + maskVal*t
 		}
+		dem.ReportProgress(prog, stage, y+1, h)
 	}
 
+	return result, nil
+}
+
+func linearBlendResampled(demData []float64, region *dem.Region, mask []float64, maskRegion *dem.Region, noData, blendWidth float64) []float64 {
+	result, _ := linearBlendResampledOpts(demData, region, mask, maskRegion, noData, blendWidth, nil, "")
 	return result
 }
 
-func linearBlendResampled(dem []float64, region *dem.Region, mask []float64, maskRegion *dem.Region, noData, blendWidth float64) []float64 {
+func linearBlendResampledOpts(demData []float64, region *dem.Region, mask []float64, maskRegion *dem.Region, noData, blendWidth float64, opts *Options, stage string) ([]float64, error) {
+	prog, ctx := progressOf(opts)
 	w, h := region.XSize, region.YSize
 	result := make([]float64, w*h)
-	copy(result, dem)
+	copy(result, demData)
 
-	gt := region.GeoTransform()
 	mgt := maskRegion.GeoTransform()
 	mw, mh := maskRegion.XSize, maskRegion.YSize
 
+	distMap := dem.ComputeEuclideanDistance(mask, mw, mh, noData, maskRegion.XRes, maskRegion.YRes)
+
 	for y := 0; y < h; y++ {
+		if err := dem.CheckCtx(ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", stage, err)
+		}
 		for x := 0; x < w; x++ {
 			idx := y*w + x
-			demVal := dem[idx]
+			demVal := demData[idx]
 			if demVal == noData || math.IsNaN(demVal) {
 				continue
 			}
 
-			geoX := gt[0] + float64(x)*gt[1]
-			geoY := gt[3] + float64(y)*gt[5]
+			geoX, geoY := region.PixelCenterGeo(x, y)
 
 			mx := int((geoX - mgt[0]) / mgt[1])
 			my := int((geoY - mgt[3]) / mgt[5])
@@ -108,45 +136,15 @@ func linearBlendResampled(dem []float64, region *dem.Region, mask []float64, mas
 				continue
 			}
 
-			dist := edgeDistance(my*mw+mx, mask, mw, mh, mask[my*mw+mx])
-			if dist < 0 || dist >= blendWidth {
+			dist := distMap[my*mw+mx]
+			if dist >= blendWidth {
 				continue
 			}
 			t := dist / blendWidth
 			result[idx] = demVal*(1-t) + maskVal*t
 		}
+		dem.ReportProgress(prog, stage, y+1, h)
 	}
 
-	return result
-}
-
-func edgeDistance(idx int, data []float64, w, h int, noData float64) float64 {
-	x, y := idx%w, idx/w
-	if data[idx] == noData || math.IsNaN(data[idx]) {
-		return -1
-	}
-
-	minDist := -1.0
-	for dy := -1; dy <= 1; dy++ {
-		for dx := -1; dx <= 1; dx++ {
-			if dx == 0 && dy == 0 {
-				continue
-			}
-			nx, ny := x+dx, y+dy
-			if nx < 0 || nx >= w || ny < 0 || ny >= h {
-				continue
-			}
-			nidx := ny*w + nx
-			if nidx < 0 || nidx >= len(data) {
-				continue
-			}
-			if data[nidx] == noData || math.IsNaN(data[nidx]) {
-				dist := math.Sqrt(float64(dx*dx + dy*dy))
-				if minDist < 0 || dist < minDist {
-					minDist = dist
-				}
-			}
-		}
-	}
-	return minDist
+	return result, nil
 }

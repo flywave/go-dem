@@ -36,7 +36,7 @@ func TestMovingAverage_Basic(t *testing.T) {
 	}
 	centerIdx := 5*10 + 5
 	if math.Abs(res.DEM[centerIdx]-25) > 5 {
-		t.Logf("near point average: expected ~25, got %.2f", res.DEM[centerIdx])
+		t.Errorf("near point average: expected ~25, got %.2f", res.DEM[centerIdx])
 	}
 }
 

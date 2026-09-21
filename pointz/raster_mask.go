@@ -30,25 +30,65 @@ func RasterMaskFilter(points []Point3D, opts *RasterMaskOptions) ([]bool, error)
 	ySize := ds.RasterYSize()
 	gt := ds.GeoTransform()
 	band := ds.RasterBand(1)
-	ndv, _ := band.NoDataValue()
+	ndv, ndvValid := band.NoDataValue()
 
-	data, err := band.ReadWindow(0, 0, xSize, ySize, xSize, ySize, gdal.Nearest)
-	if err != nil {
-		return nil, fmt.Errorf("read raster mask: %v", err)
+	det := gt[1]*gt[5] - gt[2]*gt[4]
+	if det == 0 {
+		return nil, fmt.Errorf("degenerate geo transform in raster mask: %s", opts.MaskPath)
 	}
+
+	bw, bh := band.BlockSize()
+	if bw <= 0 {
+		bw = xSize
+	}
+	if bh <= 0 {
+		bh = ySize
+	}
+	bcols := (xSize + bw - 1) / bw
+
+	type maskBlock struct {
+		data      []float64
+		w, x0, y0 int
+	}
+	cache := make(map[int]maskBlock)
 
 	mask := make([]bool, len(points))
 	for i, p := range points {
-		px := int(math.Floor((p.X - gt[0]) / gt[1]))
-		py := int(math.Floor((p.Y - gt[3]) / gt[5]))
+		dx := p.X - gt[0]
+		dy := p.Y - gt[3]
+		px := int(math.Floor((gt[5]*dx - gt[2]*dy) / det))
+		py := int(math.Floor((gt[1]*dy - gt[4]*dx) / det))
 		if px < 0 || px >= xSize || py < 0 || py >= ySize {
 			if !opts.Invert {
 				mask[i] = true
 			}
 			continue
 		}
-		val := data[py*xSize+px]
-		isInside := val != ndv && !math.IsNaN(val) && val != 0
+		bk := (py/bh)*bcols + px/bw
+		blk, ok := cache[bk]
+		if !ok {
+			x0 := (px / bw) * bw
+			y0 := (py / bh) * bh
+			ww := bw
+			if x0+ww > xSize {
+				ww = xSize - x0
+			}
+			hh := bh
+			if y0+hh > ySize {
+				hh = ySize - y0
+			}
+			blkData, err := band.ReadWindow(x0, y0, ww, hh, ww, hh, gdal.Nearest)
+			if err != nil {
+				return nil, fmt.Errorf("read raster mask: %v", err)
+			}
+			blk = maskBlock{data: blkData, w: ww, x0: x0, y0: y0}
+			cache[bk] = blk
+		}
+		val := blk.data[(py-blk.y0)*blk.w+(px-blk.x0)]
+		isInside := !math.IsNaN(val) && val != 0
+		if ndvValid && val == ndv {
+			isInside = false
+		}
 		if opts.Invert {
 			mask[i] = isInside
 		} else {

@@ -3,9 +3,10 @@ package pointz
 import "math"
 
 type DiffZOptions struct {
-	MinDiff float64
-	MaxDiff float64
-	Invert  bool
+	MinDiff   float64
+	MaxDiff   float64
+	MinMaxSet bool
+	Invert    bool
 }
 
 func DiffZFilter(points []Point3D, opts *DiffZOptions) []bool {
@@ -18,12 +19,9 @@ func DiffZFilter(points []Point3D, opts *DiffZOptions) []bool {
 	}
 
 	for i, p := range points {
-		inside := true
-		if !math.IsNaN(opts.MinDiff) && p.Z < opts.MinDiff {
-			inside = false
-		}
-		if !math.IsNaN(opts.MaxDiff) && p.Z > opts.MaxDiff {
-			inside = false
+		inside := !math.IsNaN(p.Z)
+		if inside && opts.MinMaxSet {
+			inside = p.Z >= opts.MinDiff && p.Z <= opts.MaxDiff
 		}
 		if opts.Invert {
 			mask[i] = inside

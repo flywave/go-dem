@@ -1,6 +1,7 @@
 package pointz
 
 import (
+	"math"
 	"testing"
 )
 
@@ -28,9 +29,7 @@ func TestReclassifyCloud_Basic(t *testing.T) {
 		t.Fatal("nil result")
 	}
 	if result[25].Classification != 1 {
-		t.Log("reclassify: outlier ground point should be reclassified")
-	} else {
-		t.Log("reclassify: outlier remained ground (may vary with LMedS)")
+		t.Errorf("reclassify: outlier ground point (Z=50) should be reclassified to 1, got %d", result[25].Classification)
 	}
 }
 
@@ -61,19 +60,21 @@ func TestReclassifyCloud_AllGroundFlat(t *testing.T) {
 }
 
 func TestExtendCloud_Basic(t *testing.T) {
-	pts := make([]ClassifiedPoint, 16)
-	for i := 0; i < 16; i++ {
-		x := float64(i % 4)
-		y := float64(i / 4)
-		pts[i] = ClassifiedPoint{
-			Point3D:        Point3D{X: x, Y: y, Z: x + y + 5},
-			Classification: 2,
-			R:              100, G: 150, B: 200,
-		}
+	var pts []ClassifiedPoint
+	for x := 0; x <= 4; x++ {
+		pts = append(pts,
+			ClassifiedPoint{Point3D: Point3D{X: float64(x), Y: 0, Z: 0.1*float64(x) + 5}, Classification: 2, R: 100, G: 150, B: 200},
+			ClassifiedPoint{Point3D: Point3D{X: float64(x), Y: 4, Z: 0.1*float64(x) + 0.8 + 5}, Classification: 2, R: 100, G: 150, B: 200})
 	}
+	for y := 1; y <= 3; y++ {
+		pts = append(pts,
+			ClassifiedPoint{Point3D: Point3D{X: 0, Y: float64(y), Z: 0.2*float64(y) + 5}, Classification: 2, R: 100, G: 150, B: 200},
+			ClassifiedPoint{Point3D: Point3D{X: 4, Y: float64(y), Z: 0.4 + 0.2*float64(y) + 5}, Classification: 2, R: 100, G: 150, B: 200})
+	}
+
 	opts := &GroundRectificationOptions{
 		ExtendPlan:         PartitionOne,
-		ExtendGridDistance: 2,
+		ExtendGridDistance: 1,
 		MinPoints:          3,
 		MinArea:            1,
 	}
@@ -81,10 +82,49 @@ func TestExtendCloud_Basic(t *testing.T) {
 	if result == nil {
 		t.Fatal("nil result")
 	}
-	if len(result) > len(pts) {
-		t.Logf("extend: added %d new points", len(result)-len(pts))
-	} else {
-		t.Log("extend: no new points added (grid may be too dense)")
+	added := result[len(pts):]
+	if len(added) == 0 {
+		t.Fatal("extend: interior grid points should be added for the boundary-ring ground")
+	}
+	for _, p := range added {
+		if p.Classification != 2 {
+			t.Errorf("extended point should be ground, got class %d", p.Classification)
+		}
+		expected := 0.1*p.X + 0.2*p.Y + 5
+		if math.Abs(p.Z-expected) > 1e-6 {
+			t.Errorf("extended point (%.1f,%.1f) should lie on plane z=0.1x+0.2y+5, got %.2f (expected %.2f)", p.X, p.Y, p.Z, expected)
+		}
+	}
+}
+
+func TestExtendCloud_ZeroPlane(t *testing.T) {
+	var pts []ClassifiedPoint
+	for x := 0; x <= 4; x++ {
+		pts = append(pts,
+			ClassifiedPoint{Point3D: Point3D{X: float64(x), Y: 0, Z: 0}, Classification: 2},
+			ClassifiedPoint{Point3D: Point3D{X: float64(x), Y: 4, Z: 0}, Classification: 2})
+	}
+	for y := 1; y <= 3; y++ {
+		pts = append(pts,
+			ClassifiedPoint{Point3D: Point3D{X: 0, Y: float64(y), Z: 0}, Classification: 2},
+			ClassifiedPoint{Point3D: Point3D{X: 4, Y: float64(y), Z: 0}, Classification: 2})
+	}
+
+	opts := &GroundRectificationOptions{
+		ExtendPlan:         PartitionOne,
+		ExtendGridDistance: 1,
+		MinPoints:          3,
+		MinArea:            1,
+	}
+	result := extendCloud(pts, opts)
+	added := result[len(pts):]
+	if len(added) == 0 {
+		t.Fatal("extend: a flat z=0 ground must still produce grid points (Z==0 is not a sentinel)")
+	}
+	for _, p := range added {
+		if p.Classification != 2 {
+			t.Errorf("extended point should be ground, got class %d", p.Classification)
+		}
 	}
 }
 

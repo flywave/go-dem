@@ -79,9 +79,11 @@ func verticalDatumEPSG(vd geoid.VerticalDatum) (code int, name string) {
 }
 
 func resolveOutputCRS(cfg OutputConfig, region *Region) string {
-	hCRS := cfg.CRS
-	if hCRS == "" {
-		hCRS = region.SRS().GetDef()
+	hCRS := strings.TrimSpace(cfg.CRS)
+	if hCRS == "" && region != nil {
+		if srs := region.SRS(); srs != nil {
+			hCRS = strings.TrimSpace(srs.GetDef())
+		}
 	}
 	if hCRS == "" {
 		return ""
@@ -90,6 +92,7 @@ func resolveOutputCRS(cfg OutputConfig, region *Region) string {
 	var hWkt string
 	if strings.HasPrefix(hCRS, "EPSG:") || strings.HasPrefix(hCRS, "+proj=") {
 		if crs, err := gdal.NewCRS(hCRS); err == nil {
+			defer crs.SpatialReference().Destroy()
 			if wkt, err := crs.ToWKT(); err == nil && wkt != "" {
 				hWkt = wkt
 			}
@@ -104,6 +107,7 @@ func resolveOutputCRS(cfg OutputConfig, region *Region) string {
 		if vEPSG > 0 {
 			vCrs, err := gdal.NewCRS(fmt.Sprintf("EPSG:%d", vEPSG))
 			if err == nil {
+				defer vCrs.SpatialReference().Destroy()
 				vWkt, err := vCrs.ToWKT()
 				if err == nil && vWkt != "" {
 					compound := fmt.Sprintf(
@@ -163,19 +167,32 @@ func CreateStack(stackData [][]float64, region *Region, outputPath string, noDat
 }
 
 func CreateRGB(pixels []uint8, region *Region, outputPath string) error {
+	w, h := region.XSize, region.YSize
+	if len(pixels) < 3*w*h {
+		return fmt.Errorf("insufficient pixel data: need at least %d values for %dx%d RGB, got %d",
+			3*w*h, w, h, len(pixels))
+	}
 	cfg := DefaultGTiffConfig
 	cfg.DataType = gdal.Byte
 	cfg.CRS = region.SRS().GetDef()
+
+	n := w * h
+	planes := [3][]float64{
+		make([]float64, n),
+		make([]float64, n),
+		make([]float64, n),
+	}
+	for i := 0; i < n; i++ {
+		planes[0][i] = float64(pixels[i*3])
+		planes[1][i] = float64(pixels[i*3+1])
+		planes[2][i] = float64(pixels[i*3+2])
+	}
 
 	profile := buildProfileConfig(region, 3, cfg)
 	return gdal.WithOutput(outputPath, profile, func(ds gdal.Dataset) error {
 		for band := 0; band < 3; band++ {
 			bandData := ds.RasterBand(band + 1)
-			bandPixels := make([]float64, region.XSize*region.YSize)
-			for i := 0; i < region.XSize*region.YSize; i++ {
-				bandPixels[i] = float64(pixels[i*3+band])
-			}
-			if err := bandData.IO(gdal.Write, 0, 0, region.XSize, region.YSize, bandPixels, region.XSize, region.YSize, 0, 0); err != nil {
+			if err := bandData.IO(gdal.Write, 0, 0, w, h, planes[band], w, h, 0, 0); err != nil {
 				return fmt.Errorf("band %d: %v", band+1, err)
 			}
 		}
@@ -191,6 +208,7 @@ func parseCRSFromWKT(wkt string) geo.Proj {
 	if err != nil {
 		return nil
 	}
+	defer crs.SpatialReference().Destroy()
 	if proj4, err := crs.ToProj4(); err == nil && proj4 != "" {
 		return geo.NewProj(proj4)
 	}
@@ -209,6 +227,10 @@ func ReadDEM(path string) ([]float64, *Region, error) {
 		ySize := ds.RasterYSize()
 		gt := ds.GeoTransform()
 
+		if gt[2] != 0 || gt[4] != 0 {
+			return fmt.Errorf("rotated rasters not supported in ReadDEM")
+		}
+
 		band := ds.RasterBand(1)
 		var err error
 		data, err = band.ReadWindow(0, 0, xSize, ySize, xSize, ySize, gdal.Nearest)
@@ -226,10 +248,6 @@ func ReadDEM(path string) ([]float64, *Region, error) {
 		north := gt[3]
 		east := gt[0] + float64(xSize)*gt[1]
 		south := gt[3] + float64(ySize)*gt[5]
-
-		if gt[2] != 0 || gt[4] != 0 {
-			return fmt.Errorf("rotated rasters not supported in ReadDEM")
-		}
 
 		region = NewRegionFromBBox(
 			west, south, east, north,
@@ -254,6 +272,10 @@ func ReadDEMBand(path string, bandIdx int) ([]float64, *Region, error) {
 		xSize := ds.RasterXSize()
 		ySize := ds.RasterYSize()
 		gt := ds.GeoTransform()
+
+		if gt[2] != 0 || gt[4] != 0 {
+			return fmt.Errorf("rotated rasters not supported in ReadDEMBand")
+		}
 
 		band := ds.RasterBand(bandIdx)
 		var err error

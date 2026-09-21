@@ -2,7 +2,6 @@ package pointz
 
 import (
 	"fmt"
-	"math"
 )
 
 type RectifyMethod string
@@ -37,6 +36,11 @@ func DefaultGroundRectificationOptions() *GroundRectificationOptions {
 	}
 }
 
+// RectifyGround reclassifies and/or extends ground points of a classified
+// point cloud. NOT IMPLEMENTED YET: readClassifiedCloud and
+// writeClassifiedCloud are placeholders that always return errors, so this
+// entry point currently fails at the read step. The internal
+// reclassifyCloud/extendCloud logic is exercised through tests only.
 func RectifyGround(opts *GroundRectificationOptions) error {
 	if opts == nil {
 		opts = DefaultGroundRectificationOptions()
@@ -93,12 +97,21 @@ func reclassifyCloud(points []ClassifiedPoint, opts *GroundRectificationOptions)
 		return result
 	}
 
-	partitioner := SelectPartitionPlan(opts.ReclassifyPlan, ground)
+	plan := opts.ReclassifyPlan
+	if plan == "" {
+		plan = PartitionMedian
+	}
+	partitioner := SelectPartitionPlan(plan, ground)
 	partitions := partitioner.Execute(ground, opts.MinPoints, opts.MinArea)
 
 	dists := make([]float64, len(ground))
 	for j := range dists {
 		dists[j] = -1
+	}
+
+	groundIndex := make(map[Point3D]int, len(ground))
+	for k, gp := range ground {
+		groundIndex[gp] = k
 	}
 
 	for _, part := range partitions {
@@ -114,14 +127,13 @@ func reclassifyCloud(points []ClassifiedPoint, opts *GroundRectificationOptions)
 		}
 
 		for _, gp := range part.Points {
-			for k, gidx := range groundIdx {
-				if gp.X == points[gidx].X && gp.Y == points[gidx].Y && gp.Z == points[gidx].Z {
-					dist := plane.AbsDistance(gp)
-					if dists[k] < 0 || dist < dists[k] {
-						dists[k] = dist
-					}
-					break
-				}
+			k, ok := groundIndex[gp]
+			if !ok {
+				continue
+			}
+			dist := plane.AbsDistance(gp)
+			if dists[k] < 0 || dist < dists[k] {
+				dists[k] = dist
 			}
 		}
 	}
@@ -161,15 +173,23 @@ func extendCloud(points []ClassifiedPoint, opts *GroundRectificationOptions) []C
 		}
 	}
 
-	partitioner := SelectPartitionPlan(opts.ExtendPlan, ground)
-	if opts.ExtendPlan == "" {
-		partitioner = SelectPartitionPlan(PartitionMedian, ground)
+	plan := opts.ExtendPlan
+	if plan == "" {
+		plan = PartitionMedian
 	}
+	partitioner := SelectPartitionPlan(plan, ground)
 	partitions := partitioner.Execute(ground, opts.MinPoints, opts.MinArea)
+
+	groundColored := make([]ClassifiedPoint, 0)
+	for _, p := range points {
+		if p.Classification == 2 {
+			groundColored = append(groundColored, p)
+		}
+	}
 
 	result := make([]ClassifiedPoint, len(points))
 	copy(result, points)
-	usedGrid := make(map[int]bool)
+	assigned := make([]bool, len(grid3D))
 
 	for _, part := range partitions {
 		if len(part.Points) < 3 {
@@ -184,8 +204,8 @@ func extendCloud(points []ClassifiedPoint, opts *GroundRectificationOptions) []C
 		}
 
 		var avgR, avgG, avgB, count float64
-		for _, p := range points {
-			if p.Classification == 2 && part.Bounds.Contains(p.X, p.Y) {
+		for _, p := range groundColored {
+			if part.Bounds.Contains(p.X, p.Y) {
 				avgR += p.R
 				avgG += p.G
 				avgB += p.B
@@ -202,11 +222,10 @@ func extendCloud(points []ClassifiedPoint, opts *GroundRectificationOptions) []C
 			if !part.Bounds.Contains(gp.X, gp.Y) {
 				continue
 			}
-			key := int(gp.X*10000 + gp.Y*10000)
-			if usedGrid[key] {
+			if assigned[gi] {
 				continue
 			}
-			usedGrid[key] = true
+			assigned[gi] = true
 
 			grid3D[gi].Z = plane.ProjectZ(gp.X, gp.Y)
 			grid3D[gi].Classification = 2
@@ -216,12 +235,11 @@ func extendCloud(points []ClassifiedPoint, opts *GroundRectificationOptions) []C
 		}
 	}
 
-	finalBox := boxFromPoints(groundPoints(points))
-	for _, gp := range grid3D {
-		if gp.Z == 0 {
+	for gi, gp := range grid3D {
+		if !assigned[gi] {
 			continue
 		}
-		if !finalBox.Contains(gp.X, gp.Y) {
+		if !bbox.Contains(gp.X, gp.Y) {
 			continue
 		}
 		gp.Classification = 2
@@ -231,10 +249,18 @@ func extendCloud(points []ClassifiedPoint, opts *GroundRectificationOptions) []C
 	return result
 }
 
+const maxGridPoints = 5000000
+
 func buildGridForBounds(bounds BoxBounds, hull ConvexHull, cloud []Point3D, distance float64) []Point3D {
 	if distance <= 0 {
 		distance = 5
 	}
+	nx := int((bounds.XMax-bounds.XMin)/distance) + 2
+	ny := int((bounds.YMax-bounds.YMin)/distance) + 2
+	if nx <= 0 || ny <= 0 || nx > maxGridPoints || ny > maxGridPoints || nx*ny > maxGridPoints {
+		return nil
+	}
+
 	var raw []Point3D
 	for x := bounds.XMin; x <= bounds.XMax; x += distance {
 		for y := bounds.YMin; y <= bounds.YMax; y += distance {
@@ -245,19 +271,19 @@ func buildGridForBounds(bounds BoxBounds, hull ConvexHull, cloud []Point3D, dist
 	}
 
 	inside := hull.KeepPointsInside(raw)
+	if len(inside) == 0 || len(cloud) == 0 {
+		return inside
+	}
+
+	pts := make([]vec2, len(cloud))
+	for i, cp := range cloud {
+		pts[i] = vec2{cp.X, cp.Y}
+	}
+	tree := newKDTree2D(pts)
 
 	var lonely []Point3D
 	for _, gp := range inside {
-		close := false
-		for _, cp := range cloud {
-			dx := gp.X - cp.X
-			dy := gp.Y - cp.Y
-			if math.Sqrt(dx*dx+dy*dy) < distance {
-				close = true
-				break
-			}
-		}
-		if !close {
+		if tree.radiusCount(gp.X, gp.Y, distance) == 0 {
 			lonely = append(lonely, gp)
 		}
 	}

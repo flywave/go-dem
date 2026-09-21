@@ -1,6 +1,7 @@
 package grits
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/flywave/go-dem"
@@ -20,91 +21,94 @@ func (f *weightFilter) Run(data []float64, region *dem.Region, opts *Options) ([
 
 	noData := opts.GetNoData()
 
-	return computeWeightBuffer(data, region.XSize, region.YSize, radius, noData), nil
+	if err := startFilter(opts, f.Name(), region.YSize); err != nil {
+		return nil, err
+	}
+	weights, err := computeWeightBufferOpts(data, region.XSize, region.YSize, radius, noData, opts, f.Name())
+	if err != nil {
+		return nil, err
+	}
+	finishFilter(opts, f.Name(), region.YSize)
+	return weights, nil
 }
 
 func computeWeightBuffer(data []float64, w, h, radius int, noData float64) []float64 {
+	weights, _ := computeWeightBufferOpts(data, w, h, radius, noData, nil, "")
+	return weights
+}
+
+func computeWeightBufferOpts(data []float64, w, h, radius int, noData float64, opts *Options, stage string) ([]float64, error) {
+	prog, ctx := progressOf(opts)
 	weights := make([]float64, w*h)
 
-	distMap := make([][]float64, h)
-	for y := 0; y < h; y++ {
-		distMap[y] = make([]float64, w)
-		for x := 0; x < w; x++ {
-			idx := y*w + x
-			if data[idx] != noData && !math.IsNaN(data[idx]) {
-				distMap[y][x] = 0
-			} else {
-				distMap[y][x] = float64(w + h)
-			}
+	const far = 1 << 30
+	distMap := make([]float64, w*h)
+	hasNoData := false
+	for i := range distMap {
+		if data[i] == noData || math.IsNaN(data[i]) {
+			distMap[i] = 0
+			hasNoData = true
+		} else {
+			distMap[i] = far
 		}
 	}
 
 	for y := 0; y < h; y++ {
+		if err := dem.CheckCtx(ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", stage, err)
+		}
 		for x := 0; x < w; x++ {
-			if x > 0 && distMap[y][x-1]+1 < distMap[y][x] {
-				distMap[y][x] = distMap[y][x-1] + 1
+			idx := y*w + x
+			if distMap[idx] == 0 {
+				continue
 			}
-			if y > 0 && distMap[y-1][x]+1 < distMap[y][x] {
-				distMap[y][x] = distMap[y-1][x] + 1
+			if x > 0 && distMap[idx-1]+1 < distMap[idx] {
+				distMap[idx] = distMap[idx-1] + 1
+			}
+			if y > 0 && distMap[idx-w]+1 < distMap[idx] {
+				distMap[idx] = distMap[idx-w] + 1
 			}
 		}
+		dem.ReportProgress(prog, stage, (y+1)/2, h)
 	}
 
 	for y := h - 1; y >= 0; y-- {
+		if err := dem.CheckCtx(ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", stage, err)
+		}
 		for x := w - 1; x >= 0; x-- {
-			if x < w-1 && distMap[y][x+1]+1 < distMap[y][x] {
-				distMap[y][x] = distMap[y][x+1] + 1
+			idx := y*w + x
+			if distMap[idx] == 0 {
+				continue
 			}
-			if y < h-1 && distMap[y+1][x]+1 < distMap[y][x] {
-				distMap[y][x] = distMap[y+1][x] + 1
+			if x < w-1 && distMap[idx+1]+1 < distMap[idx] {
+				distMap[idx] = distMap[idx+1] + 1
+			}
+			if y < h-1 && distMap[idx+w]+1 < distMap[idx] {
+				distMap[idx] = distMap[idx+w] + 1
 			}
 		}
+		dem.ReportProgress(prog, stage, (h+h-1-y+1)/2, h)
 	}
 
-	maxDist := 0.0
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			if distMap[y][x] > maxDist && distMap[y][x] < float64(w+h) {
-				maxDist = distMap[y][x]
-			}
-		}
-	}
-
-	if maxDist <= 0 {
-		hasValid := false
-		for _, v := range data {
-			if v != noData && !math.IsNaN(v) {
-				hasValid = true
-				break
-			}
-		}
-		if !hasValid {
-			return weights
-		}
+	if !hasNoData {
 		for i := range weights {
 			weights[i] = 1.0
 		}
-		return weights
+		return weights, nil
 	}
 
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			idx := y*w + x
-			if data[idx] != noData && !math.IsNaN(data[idx]) {
-				dist := distMap[y][x]
-				if float64(radius) > 0 && dist <= float64(radius) {
-					weights[idx] = 1.0 - dist/float64(radius)
-					if weights[idx] < 0.1 {
-						weights[idx] = 0.1
-					}
-				} else {
-					weights[idx] = 1.0
-				}
-			} else {
-				weights[idx] = 0
-			}
+	for i := range weights {
+		if distMap[i] == 0 {
+			weights[i] = 0
+			continue
 		}
+		wt := 1.0 - distMap[i]/float64(radius)
+		if wt < 0.1 {
+			wt = 0.1
+		}
+		weights[i] = wt
 	}
 
-	return weights
+	return weights, nil
 }

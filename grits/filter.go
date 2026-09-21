@@ -1,6 +1,7 @@
 package grits
 
 import (
+	"fmt"
 	"math"
 	"sort"
 
@@ -26,7 +27,15 @@ func (f *blurFilter) Run(data []float64, region *dem.Region, opts *Options) ([]f
 	if radius <= 0 {
 		radius = int(math.Ceil(sigma * 2))
 	}
-	return gaussianBlur(data, region.XSize, region.YSize, sigma, radius), nil
+	if err := startFilter(opts, f.Name(), region.YSize); err != nil {
+		return nil, err
+	}
+	result, err := gaussianBlur(data, region.XSize, region.YSize, sigma, radius, opts.GetNoData(), opts, f.Name())
+	if err != nil {
+		return nil, err
+	}
+	finishFilter(opts, f.Name(), region.YSize)
+	return result, nil
 }
 
 func (f *gaussianFilter) Run(data []float64, region *dem.Region, opts *Options) ([]float64, error) {
@@ -38,21 +47,41 @@ func (f *gaussianFilter) Run(data []float64, region *dem.Region, opts *Options) 
 	if radius <= 0 {
 		radius = int(math.Ceil(sigma * 2))
 	}
-	return gaussianBlur(data, region.XSize, region.YSize, sigma, radius), nil
+	if err := startFilter(opts, f.Name(), region.YSize); err != nil {
+		return nil, err
+	}
+	result, err := gaussianBlur(data, region.XSize, region.YSize, sigma, radius, opts.GetNoData(), opts, f.Name())
+	if err != nil {
+		return nil, err
+	}
+	finishFilter(opts, f.Name(), region.YSize)
+	return result, nil
 }
 
 func (f *medianFilter) Run(data []float64, region *dem.Region, opts *Options) ([]float64, error) {
-	kSize := opts.KernelSize
+	kSize := normalizeKernelSize(opts.KernelSize)
+	if err := startFilter(opts, f.Name(), region.YSize); err != nil {
+		return nil, err
+	}
+	result, err := medianFilter2D(data, region.XSize, region.YSize, kSize, opts.GetNoData(), opts, f.Name())
+	if err != nil {
+		return nil, err
+	}
+	finishFilter(opts, f.Name(), region.YSize)
+	return result, nil
+}
+
+func normalizeKernelSize(kSize int) int {
 	if kSize < 3 {
 		kSize = 3
 	}
 	if kSize%2 == 0 {
 		kSize++
 	}
-	return medianFilter2D(data, region.XSize, region.YSize, kSize, opts.GetNoData()), nil
+	return kSize
 }
 
-func gaussianBlur(data []float64, w, h int, sigma float64, radius int) []float64 {
+func gaussianBlur(data []float64, w, h int, sigma float64, radius int, noData float64, opts *Options, stage string) ([]float64, error) {
 	kernel := make1DGaussianKernel(sigma, radius)
 	result := make([]float64, len(data))
 	copy(result, data)
@@ -60,7 +89,15 @@ func gaussianBlur(data []float64, w, h int, sigma float64, radius int) []float64
 	scratch := make([]float64, len(data))
 
 	for y := 0; y < h; y++ {
+		if err := dem.CheckCtx(opts.Ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", stage, err)
+		}
 		for x := 0; x < w; x++ {
+			idx := y*w + x
+			if data[idx] == noData || math.IsNaN(data[idx]) {
+				scratch[idx] = data[idx]
+				continue
+			}
 			var sum, weightSum float64
 			for k := -radius; k <= radius; k++ {
 				ix := x + k
@@ -68,7 +105,7 @@ func gaussianBlur(data []float64, w, h int, sigma float64, radius int) []float64
 					continue
 				}
 				val := data[y*w+ix]
-				if math.IsNaN(val) {
+				if val == noData || math.IsNaN(val) {
 					continue
 				}
 				kw := kernel[k+radius]
@@ -81,10 +118,17 @@ func gaussianBlur(data []float64, w, h int, sigma float64, radius int) []float64
 				scratch[y*w+x] = data[y*w+x]
 			}
 		}
+		dem.ReportProgress(opts.Progress, stage, y+1, h)
 	}
 
 	for x := 0; x < w; x++ {
+		if err := dem.CheckCtx(opts.Ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", stage, err)
+		}
 		for y := 0; y < h; y++ {
+			if scratch[y*w+x] == noData || math.IsNaN(scratch[y*w+x]) {
+				continue
+			}
 			var sum, weightSum float64
 			for k := -radius; k <= radius; k++ {
 				iy := y + k
@@ -92,7 +136,7 @@ func gaussianBlur(data []float64, w, h int, sigma float64, radius int) []float64
 					continue
 				}
 				val := scratch[iy*w+x]
-				if math.IsNaN(val) {
+				if val == noData || math.IsNaN(val) {
 					continue
 				}
 				kw := kernel[k+radius]
@@ -101,11 +145,13 @@ func gaussianBlur(data []float64, w, h int, sigma float64, radius int) []float64
 			}
 			if weightSum > 0 {
 				result[y*w+x] = sum / weightSum
+			} else {
+				result[y*w+x] = scratch[y*w+x]
 			}
 		}
 	}
 
-	return result
+	return result, nil
 }
 
 func make1DGaussianKernel(sigma float64, radius int) []float64 {
@@ -122,7 +168,7 @@ func make1DGaussianKernel(sigma float64, radius int) []float64 {
 	return kernel
 }
 
-func medianFilter2D(data []float64, w, h, kSize int, noData float64) []float64 {
+func medianFilter2D(data []float64, w, h, kSize int, noData float64, opts *Options, stage string) ([]float64, error) {
 	result := make([]float64, len(data))
 	copy(result, data)
 
@@ -130,6 +176,9 @@ func medianFilter2D(data []float64, w, h, kSize int, noData float64) []float64 {
 	neighbors := make([]float64, 0, kSize*kSize)
 
 	for y := 0; y < h; y++ {
+		if err := dem.CheckCtx(opts.Ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", stage, err)
+		}
 		for x := 0; x < w; x++ {
 			idx := y*w + x
 			if data[idx] == noData || math.IsNaN(data[idx]) {
@@ -155,9 +204,10 @@ func medianFilter2D(data []float64, w, h, kSize int, noData float64) []float64 {
 				result[idx] = median(neighbors)
 			}
 		}
+		dem.ReportProgress(opts.Progress, stage, y+1, h)
 	}
 
-	return result
+	return result, nil
 }
 
 func median(vals []float64) float64 {
@@ -173,4 +223,3 @@ func median(vals []float64) float64 {
 	}
 	return sorted[n/2]
 }
-

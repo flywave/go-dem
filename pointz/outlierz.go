@@ -22,6 +22,9 @@ func OutlierZFilter(points []Point3D, opts *OutlierZOptions) []bool {
 	if len(points) == 0 {
 		return nil
 	}
+	if opts == nil {
+		opts = &OutlierZOptions{}
+	}
 
 	percentile := opts.Percentile
 	if percentile <= 0 {
@@ -47,7 +50,11 @@ func OutlierZFilter(points []Point3D, opts *OutlierZOptions) []bool {
 	mask := make([]bool, len(points))
 
 	for pass := 0; pass < multipass; pass++ {
-		f := float64(pass) / float64(multipass-1)
+		denom := multipass - 1
+		var f float64
+		if denom > 0 {
+			f = float64(pass) / float64(denom)
+		}
 		passPerc := percentile + f*(maxPercentile-percentile)
 		passRes := maxRes - f*(maxRes-res)
 
@@ -100,29 +107,9 @@ func OutlierZFilter(points []Point3D, opts *OutlierZOptions) []bool {
 			continue
 		}
 		grid := make([]cell, xSize*ySize)
+		gridX := make([]int, len(validIdxs))
+		gridY := make([]int, len(validIdxs))
 
-		for _, idx := range validIdxs {
-			p := points[idx]
-			gx := int((p.X - minX) / passRes)
-			gy := int((p.Y - minY) / passRes)
-			if gx < 0 {
-				gx = 0
-			}
-			if gx >= xSize {
-				gx = xSize - 1
-			}
-			if gy < 0 {
-				gy = 0
-			}
-			if gy >= ySize {
-				gy = ySize - 1
-			}
-			c := &grid[gy*xSize+gx]
-			c.sumZ += p.Z
-			c.count++
-		}
-
-		residuals := make([]float64, len(validIdxs))
 		for j, idx := range validIdxs {
 			p := points[idx]
 			gx := int((p.X - minX) / passRes)
@@ -139,7 +126,17 @@ func OutlierZFilter(points []Point3D, opts *OutlierZOptions) []bool {
 			if gy >= ySize {
 				gy = ySize - 1
 			}
-			c := grid[gy*xSize+gx]
+			gridX[j] = gx
+			gridY[j] = gy
+			c := &grid[gy*xSize+gx]
+			c.sumZ += p.Z
+			c.count++
+		}
+
+		residuals := make([]float64, len(validIdxs))
+		for j, idx := range validIdxs {
+			p := points[idx]
+			c := grid[gridY[j]*xSize+gridX[j]]
 			meanZ := c.sumZ / float64(c.count)
 			diff := p.Z - meanZ
 			if diff < 0 {

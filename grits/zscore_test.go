@@ -42,6 +42,31 @@ func TestZScore_DefaultThreshold(t *testing.T) {
 	if len(res) != len(data) {
 		t.Errorf("output size mismatch")
 	}
+	for i, v := range res {
+		if v != data[i] {
+			t.Errorf("flat dem: pixel %d should be unchanged, got %.2f", i, v)
+		}
+	}
+}
+
+func TestZScore_LargeValuesStable(t *testing.T) {
+	w, h := 10, 10
+	nd := -9999.0
+	data := makeFlatDEM(w, h, 4000.0)
+	data[5*w+5] = 4400
+
+	reg := dem.NewRegionFromBBox(0, 0, float64(w), float64(h), nil, 1, 1)
+	z := &zscoreFilter{}
+	res, err := z.Run(data, reg, &Options{Threshold: 3.0, KernelSize: 5, NoData: &nd})
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if res[5*w+5] != nd {
+		t.Errorf("spike on high-elevation plateau not masked (variance cancellation): %.2f", res[5*w+5])
+	}
+	if res[0] != 4000 {
+		t.Errorf("normal pixel masked: %.2f", res[0])
+	}
 }
 
 func TestZScore_AllFlat(t *testing.T) {

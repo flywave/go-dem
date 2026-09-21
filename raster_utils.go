@@ -7,7 +7,7 @@ import (
 	gdal "github.com/flywave/flywave-gdal"
 )
 
-func ComputeEuclideanDistance(data []float64, w, h int, nd float64, res float64) []float64 {
+func ComputeEuclideanDistance(data []float64, w, h int, nd float64, resX, resY float64) []float64 {
 	dist := make([]float64, len(data))
 	inf := math.MaxFloat64
 	for i := range dist {
@@ -18,6 +18,8 @@ func ComputeEuclideanDistance(data []float64, w, h int, nd float64, res float64)
 		}
 	}
 
+	diag := math.Hypot(resX, resY)
+
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
 			idx := y*w + x
@@ -25,16 +27,16 @@ func ComputeEuclideanDistance(data []float64, w, h int, nd float64, res float64)
 				continue
 			}
 			if x > 0 {
-				dist[idx] = math.Min(dist[idx], dist[y*w+(x-1)]+res)
+				dist[idx] = math.Min(dist[idx], dist[y*w+(x-1)]+resX)
 			}
 			if y > 0 {
-				dist[idx] = math.Min(dist[idx], dist[(y-1)*w+x]+res)
+				dist[idx] = math.Min(dist[idx], dist[(y-1)*w+x]+resY)
 			}
 			if x > 0 && y > 0 {
-				dist[idx] = math.Min(dist[idx], dist[(y-1)*w+(x-1)]+res*math.Sqrt2)
+				dist[idx] = math.Min(dist[idx], dist[(y-1)*w+(x-1)]+diag)
 			}
 			if x < w-1 && y > 0 {
-				dist[idx] = math.Min(dist[idx], dist[(y-1)*w+(x+1)]+res*math.Sqrt2)
+				dist[idx] = math.Min(dist[idx], dist[(y-1)*w+(x+1)]+diag)
 			}
 		}
 	}
@@ -46,21 +48,21 @@ func ComputeEuclideanDistance(data []float64, w, h int, nd float64, res float64)
 				continue
 			}
 			if x < w-1 {
-				dist[idx] = math.Min(dist[idx], dist[y*w+(x+1)]+res)
+				dist[idx] = math.Min(dist[idx], dist[y*w+(x+1)]+resX)
 			}
 			if y < h-1 {
-				dist[idx] = math.Min(dist[idx], dist[(y+1)*w+x]+res)
+				dist[idx] = math.Min(dist[idx], dist[(y+1)*w+x]+resY)
 			}
 			if x < w-1 && y < h-1 {
-				dist[idx] = math.Min(dist[idx], dist[(y+1)*w+(x+1)]+res*math.Sqrt2)
+				dist[idx] = math.Min(dist[idx], dist[(y+1)*w+(x+1)]+diag)
 			}
 			if x > 0 && y < h-1 {
-				dist[idx] = math.Min(dist[idx], dist[(y+1)*w+(x-1)]+res*math.Sqrt2)
+				dist[idx] = math.Min(dist[idx], dist[(y+1)*w+(x-1)]+diag)
 			}
 		}
 	}
 
-	maxDist := float64(w+h) * res
+	maxDist := math.Hypot(float64(w)*resX, float64(h)*resY)
 	for i := range dist {
 		if dist[i] >= math.MaxFloat64/2 {
 			dist[i] = maxDist
@@ -79,79 +81,39 @@ func EuclideanMergeDEMs(dems [][]float64, region *Region, nd float64) ([]float64
 	if n == 0 {
 		return nil, fmt.Errorf("invalid region")
 	}
+	if region.XRes <= 0 || region.YRes <= 0 {
+		return nil, fmt.Errorf("invalid region resolution: %f x %f", region.XRes, region.YRes)
+	}
 	for i, d := range dems {
 		if len(d) != n {
 			return nil, fmt.Errorf("DEM %d: length %d doesn't match region %dx%d=%d", i, len(d), w, h, n)
 		}
 	}
 
-	res := region.XRes
-	smallDist := 0.001953125
-
 	dists := make([][]float64, len(dems))
 	for i, d := range dems {
-		dist := ComputeEuclideanDistance(d, w, h, nd, res)
-		for j := range dist {
-			if dist[j] == 0 {
-				dist[j] = smallDist
+		dists[i] = ComputeEuclideanDistance(d, w, h, nd, region.XRes, region.YRes)
+	}
+
+	sum := make([]float64, n)
+	weight := make([]float64, n)
+	for i := 0; i < len(dems); i++ {
+		for j := 0; j < n; j++ {
+			if IsNoData(dems[i][j], nd) {
+				continue
 			}
+			wgt := dists[i][j]
+			sum[j] += dems[i][j] * wgt
+			weight[j] += wgt
 		}
-		dists[i] = dist
 	}
 
 	result := make([]float64, n)
-	weight := make([]float64, n)
-	distanceSum := make([]float64, n)
-
-	for i := 0; i < len(dems); i++ {
-		for j := 0; j < n; j++ {
-			if dems[i][j] != nd && !math.IsNaN(dems[i][j]) {
-				w := dists[i][j]
-				result[j] += dems[i][j] * w
-				weight[j] += w
-				distanceSum[j] += w
-			}
-		}
-	}
-
-	nearestIdx := make([]int, n)
-	for i := range nearestIdx {
-		nearestIdx[i] = -1
-	}
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			idx := y*w + x
-			if weight[idx] <= 0 {
-				result[idx] = nd
-				continue
-			}
-
-			if weight[idx] > 0 && weight[idx] >= smallDist*2 {
-				result[idx] /= weight[idx]
-			} else {
-				bestDist := math.MaxFloat64
-				for dy := -1; dy <= 1; dy++ {
-					for dx := -1; dx <= 1; dx++ {
-						nx, ny := x+dx, y+dy
-						if nx < 0 || nx >= w || ny < 0 || ny >= h {
-							continue
-						}
-						nidx := ny*w + nx
-						if weight[nidx] >= smallDist*2 && dems[0][nidx] != nd {
-							d := math.Sqrt(float64(dx*dx + dy*dy)) * res
-							if d < bestDist {
-								bestDist = d
-								nearestIdx[idx] = nidx
-							}
-						}
-					}
-				}
-				if nearestIdx[idx] >= 0 {
-					result[idx] = result[nearestIdx[idx]] / weight[nearestIdx[idx]]
-				} else {
-					result[idx] /= weight[idx]
-				}
-			}
+	for j := 0; j < n; j++ {
+		if weight[j] > 0 {
+			result[j] = sum[j] / weight[j]
+		} else {
+			result[j] = nd
 		}
 	}
 
@@ -163,6 +125,9 @@ func CutRaster(srcPath, dstPath string, region *Region) error {
 		xSize := src.RasterXSize()
 		ySize := src.RasterYSize()
 		gt := src.GeoTransform()
+		if gt[1] == 0 || gt[5] == 0 {
+			return fmt.Errorf("degenerate geotransform in %s", srcPath)
+		}
 
 		pxMin := int(math.Floor((region.Extent.BBox.Min[0] - gt[0]) / gt[1]))
 		pxMax := int(math.Ceil((region.Extent.BBox.Max[0] - gt[0]) / gt[1]))
@@ -238,7 +203,7 @@ func CropRaster(srcPath, dstPath string) error {
 		xSize := src.RasterXSize()
 		ySize := src.RasterYSize()
 		band := src.RasterBand(1)
-		ndv, _ := band.NoDataValue()
+		ndv, ndvValid := band.NoDataValue()
 
 		data, err := band.ReadWindow(0, 0, xSize, ySize, xSize, ySize, gdal.Nearest)
 		if err != nil {
@@ -251,7 +216,7 @@ func CropRaster(srcPath, dstPath string) error {
 		for y := 0; y < ySize; y++ {
 			for x := 0; x < xSize; x++ {
 				v := data[y*xSize+x]
-				isNoData := v == ndv || math.IsNaN(v)
+				isNoData := math.IsNaN(v) || (ndvValid && v == ndv)
 				if !isNoData {
 					if firstRow < 0 {
 						firstRow = y
@@ -264,7 +229,7 @@ func CropRaster(srcPath, dstPath string) error {
 		for x := 0; x < xSize; x++ {
 			for y := 0; y < ySize; y++ {
 				v := data[y*xSize+x]
-				isNoData := v == ndv || math.IsNaN(v)
+				isNoData := math.IsNaN(v) || (ndvValid && v == ndv)
 				if !isNoData {
 					if firstCol < 0 {
 						firstCol = x
@@ -276,7 +241,7 @@ func CropRaster(srcPath, dstPath string) error {
 		for x := xSize - 1; x >= 0; x-- {
 			for y := 0; y < ySize; y++ {
 				v := data[y*xSize+x]
-				isNoData := v == ndv || math.IsNaN(v)
+				isNoData := math.IsNaN(v) || (ndvValid && v == ndv)
 				if !isNoData {
 					if lastCol < 0 {
 						lastCol = x
@@ -291,7 +256,7 @@ func CropRaster(srcPath, dstPath string) error {
 		for y := ySize - 1; y >= 0; y-- {
 			for x := 0; x < xSize; x++ {
 				v := data[y*xSize+x]
-				isNoData := v == ndv || math.IsNaN(v)
+				isNoData := math.IsNaN(v) || (ndvValid && v == ndv)
 				if !isNoData {
 					if lastRow < 0 {
 						lastRow = y
@@ -340,10 +305,13 @@ func CropRaster(srcPath, dstPath string) error {
 			dst.SetProjection(proj)
 		}
 		dstBand := dst.RasterBand(1)
-		if !math.IsNaN(ndv) {
+		if ndvValid && !math.IsNaN(ndv) {
 			dstBand.SetNoDataValue(ndv)
 		}
-		dstBand.IO(gdal.Write, 0, 0, winW, winH, cropped, winW, winH, 0, 0)
+		if err := dstBand.IO(gdal.Write, 0, 0, winW, winH, cropped, winW, winH, 0, 0); err != nil {
+			dst.Close()
+			return fmt.Errorf("write cropped band: %v", err)
+		}
 		dst.Close()
 		return nil
 	})

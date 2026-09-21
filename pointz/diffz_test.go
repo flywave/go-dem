@@ -1,12 +1,13 @@
 package pointz
 
 import (
+	"math"
 	"testing"
 )
 
 func TestDiffZ_Basic(t *testing.T) {
 	pts := []Point3D{{Z: -5}, {Z: 0}, {Z: 5}, {Z: 10}, {Z: 15}}
-	mask := DiffZFilter(pts, &DiffZOptions{MinDiff: 0, MaxDiff: 10})
+	mask := DiffZFilter(pts, &DiffZOptions{MinDiff: 0, MaxDiff: 10, MinMaxSet: true})
 	if !mask[0] || !mask[4] {
 		t.Error("points outside diff range should be masked")
 	}
@@ -17,12 +18,33 @@ func TestDiffZ_Basic(t *testing.T) {
 
 func TestDiffZ_Invert(t *testing.T) {
 	pts := []Point3D{{Z: 5}, {Z: 15}}
-	mask := DiffZFilter(pts, &DiffZOptions{MinDiff: 10, MaxDiff: 20, Invert: true})
+	mask := DiffZFilter(pts, &DiffZOptions{MinDiff: 10, MaxDiff: 20, MinMaxSet: true, Invert: true})
 	if mask[0] {
 		t.Error("invert: point below range should not be masked")
 	}
 	if !mask[1] {
 		t.Error("invert: point inside range should be masked")
+	}
+}
+
+func TestDiffZ_ZeroOptions(t *testing.T) {
+	pts := []Point3D{{Z: -5}, {Z: 0}, {Z: 15}}
+	mask := DiffZFilter(pts, &DiffZOptions{})
+	for i, m := range mask {
+		if m {
+			t.Errorf("zero-value options should not mask any point, index %d masked", i)
+		}
+	}
+}
+
+func TestDiffZ_NaNPoint(t *testing.T) {
+	pts := []Point3D{{Z: math.NaN()}, {Z: 5}}
+	mask := DiffZFilter(pts, &DiffZOptions{MinDiff: 0, MaxDiff: 10, MinMaxSet: true})
+	if !mask[0] {
+		t.Error("NaN Z should be treated as outside range and masked")
+	}
+	if mask[1] {
+		t.Error("in-range point should not be masked")
 	}
 }
 

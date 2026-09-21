@@ -2,6 +2,9 @@ package delaunay
 
 import (
 	"fmt"
+	"math"
+	"math/big"
+	"math/rand"
 	"sort"
 )
 
@@ -16,10 +19,18 @@ func DelaunayFast(x, y []float64) (triangles, neighbors [][3]int, err error) {
 	if len(x) < 3 {
 		return nil, nil, fmt.Errorf("delaunay: need at least 3 points, got %d", len(x))
 	}
+	for i := range x {
+		if math.IsNaN(x[i]) || math.IsInf(x[i], 0) {
+			return nil, nil, fmt.Errorf("delaunay: non-finite x coordinate at index %d", i)
+		}
+		if math.IsNaN(y[i]) || math.IsInf(y[i], 0) {
+			return nil, nil, fmt.Errorf("delaunay: non-finite y coordinate at index %d", i)
+		}
+	}
 
-	tris, ok := bowyerWatson(x, y)
-	if !ok {
-		return nil, nil, fmt.Errorf("delaunay: degenerate input (all points collinear?)")
+	tris, err := bowyerWatson(x, y)
+	if err != nil {
+		return nil, nil, err
 	}
 	neighbors = computeNeighbors(tris)
 	return tris, neighbors, nil
@@ -46,9 +57,37 @@ func computeNeighbors(tris [][3]int) [][3]int {
 	return nbrs
 }
 
-type bwTri struct{ a, b, c int }
+type bwTri struct {
+	v     [3]int
+	nb    [3]int
+	alive bool
+}
 
-func bowyerWatson(x, y []float64) ([][3]int, bool) {
+type cavityEdge struct {
+	a, b int
+	ext  int
+}
+
+type pointPreds struct {
+	px, py []float64
+	rx, ry []*big.Rat
+}
+
+func (pp *pointPreds) orient(a, b, c int) int {
+	if s, ok := orientFilter(pp.px[a], pp.py[a], pp.px[b], pp.py[b], pp.px[c], pp.py[c]); ok {
+		return s
+	}
+	return orientRat(pp.rx[a], pp.ry[a], pp.rx[b], pp.ry[b], pp.rx[c], pp.ry[c])
+}
+
+func (pp *pointPreds) inCircle(a, b, c, d int) int {
+	if s, ok := incircleFilter(pp.px[a], pp.py[a], pp.px[b], pp.py[b], pp.px[c], pp.py[c], pp.px[d], pp.py[d]); ok {
+		return s
+	}
+	return incircleRat(pp.rx[a], pp.ry[a], pp.rx[b], pp.ry[b], pp.rx[c], pp.ry[c], pp.rx[d], pp.ry[d])
+}
+
+func bowyerWatson(x, y []float64) ([][3]int, error) {
 	n := len(x)
 	minX, maxX, minY, maxY := x[0], x[0], y[0], y[0]
 	for i := 1; i < n; i++ {
@@ -71,54 +110,126 @@ func bowyerWatson(x, y []float64) ([][3]int, bool) {
 		delta = dy
 	}
 	if delta == 0 {
-		return nil, false
+		return nil, fmt.Errorf("delaunay: all points coincide")
 	}
-	midX, midY := (minX+maxX)/2, (minY+maxY)/2
+	midX := 0.5*minX + 0.5*maxX
+	midY := 0.5*minY + 0.5*maxY
 
 	const k = 100000.0
 	px := append(append([]float64(nil), x...), midX-k*delta, midX, midX+k*delta)
 	py := append(append([]float64(nil), y...), midY-delta, midY+k*delta, midY-delta)
+	for i := n; i < n+3; i++ {
+		if math.IsNaN(px[i]) || math.IsInf(px[i], 0) || math.IsNaN(py[i]) || math.IsInf(py[i], 0) {
+			return nil, fmt.Errorf("delaunay: coordinate extent too large to enclose with a super-triangle")
+		}
+	}
 
-	super, ok := orientTri(n, n+1, n+2, px, py)
-	if !ok {
-		return nil, false
+	rx := make([]*big.Rat, n+3)
+	ry := make([]*big.Rat, n+3)
+	for i := range px {
+		rx[i] = bigRat(px[i])
+		ry[i] = bigRat(py[i])
+	}
+	pp := &pointPreds{px: px, py: py, rx: rx, ry: ry}
+
+	super := bwTri{v: [3]int{n, n + 1, n + 2}, nb: [3]int{-1, -1, -1}, alive: true}
+	if s := pp.orient(n, n+1, n+2); s < 0 {
+		super.v[0], super.v[1] = super.v[1], super.v[0]
 	}
 	tris := []bwTri{super}
 
-	for p := 0; p < n; p++ {
-		bad := make([]bool, len(tris))
-		boundary := make(map[[2]int]int)
-		for i, tr := range tris {
-			if inCircle(px[tr.a], py[tr.a], px[tr.b], py[tr.b], px[tr.c], py[tr.c], px[p], py[p]) > 0 {
-				bad[i] = true
-				boundary[sortEdge(tr.a, tr.b)]++
-				boundary[sortEdge(tr.b, tr.c)]++
-				boundary[sortEdge(tr.c, tr.a)]++
+	order := rand.New(rand.NewSource(1)).Perm(n)
+
+	mark := make([]int, 2*n+4)
+	stamp := 0
+	startIdx := make([]int, n+3)
+	endIdx := make([]int, n+3)
+
+	bad := make([]int, 0, 64)
+	stack := make([]int, 0, 64)
+	edges := make([]cavityEdge, 0, 64)
+
+	last := 0
+	for _, p := range order {
+		last = locatePoint(p, last, tris, pp)
+		if pp.inCircle(tris[last].v[0], tris[last].v[1], tris[last].v[2], p) <= 0 {
+			continue
+		}
+
+		stamp++
+		bad = bad[:0]
+		stack = append(stack[:0], last)
+		mark[last] = stamp
+		for len(stack) > 0 {
+			t := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			bad = append(bad, t)
+			tr := &tris[t]
+			for j := 0; j < 3; j++ {
+				nb := tr.nb[j]
+				if nb < 0 || mark[nb] == stamp {
+					continue
+				}
+				if pp.inCircle(tris[nb].v[0], tris[nb].v[1], tris[nb].v[2], p) > 0 {
+					mark[nb] = stamp
+					stack = append(stack, nb)
+				}
 			}
 		}
-		kept := tris[:0]
-		for i, tr := range tris {
-			if !bad[i] {
-				kept = append(kept, tr)
+
+		edges = edges[:0]
+		for _, t := range bad {
+			tr := &tris[t]
+			for j := 0; j < 3; j++ {
+				nb := tr.nb[j]
+				if nb < 0 || mark[nb] != stamp {
+					edges = append(edges, cavityEdge{a: tr.v[j], b: tr.v[(j+1)%3], ext: nb})
+				}
 			}
 		}
-		tris = kept
-		for edge, count := range boundary {
-			if count != 1 {
+
+		if need := len(tris) + len(edges); need > len(mark) {
+			mark = append(mark, make([]int, need+16-len(mark))...)
+		}
+
+		for _, t := range bad {
+			tris[t].alive = false
+		}
+
+		for i, e := range edges {
+			startIdx[e.a] = i
+			endIdx[e.b] = i
+		}
+
+		first := len(tris)
+		for _, e := range edges {
+			tris = append(tris, bwTri{
+				v:     [3]int{e.a, e.b, p},
+				nb:    [3]int{e.ext, first + startIdx[e.b], first + endIdx[e.a]},
+				alive: true,
+			})
+		}
+		for i, e := range edges {
+			if e.ext < 0 {
 				continue
 			}
-			if tr, ok := orientTri(edge[0], edge[1], p, px, py); ok {
-				tris = append(tris, tr)
+			ext := &tris[e.ext]
+			for j := 0; j < 3; j++ {
+				if ext.v[j] == e.b && ext.v[(j+1)%3] == e.a {
+					ext.nb[j] = first + i
+					break
+				}
 			}
 		}
+		last = first
 	}
 
 	out := make([][3]int, 0, len(tris))
 	for _, tr := range tris {
-		if tr.a >= n || tr.b >= n || tr.c >= n {
+		if !tr.alive || tr.v[0] >= n || tr.v[1] >= n || tr.v[2] >= n {
 			continue
 		}
-		out = append(out, [3]int{tr.a, tr.b, tr.c})
+		out = append(out, tr.v)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		for k := 0; k < 3; k++ {
@@ -128,27 +239,50 @@ func bowyerWatson(x, y []float64) ([][3]int, bool) {
 		}
 		return false
 	})
-	return out, len(out) > 0
+	if len(out) == 0 {
+		return nil, fmt.Errorf("delaunay: degenerate input (all points collinear or fewer than 3 distinct points)")
+	}
+	return out, nil
 }
 
-func orientTri(a, b, c int, x, y []float64) (bwTri, bool) {
-	s := Orient2D(x[a], y[a], x[b], y[b], x[c], y[c])
-	if s == 0 {
-		return bwTri{}, false
+func locatePoint(p, start int, tris []bwTri, pp *pointPreds) int {
+	cur := start
+	limit := 2 * len(tris)
+	if limit < 64 {
+		limit = 64
 	}
-	if s < 0 {
-		a, b = b, a
+	for step := 0; step < limit; step++ {
+		tr := &tris[cur]
+		next := -1
+		for j := 0; j < 3; j++ {
+			if pp.orient(tr.v[j], tr.v[(j+1)%3], p) < 0 {
+				next = tr.nb[j]
+				break
+			}
+		}
+		if next < 0 {
+			return cur
+		}
+		if next >= len(tris) {
+			break
+		}
+		cur = next
 	}
-	return bwTri{a, b, c}, true
-}
-
-func inCircle(ax, ay, bx, by, cx, cy, dx, dy float64) int {
-	return InCircle(ax, ay, bx, by, cx, cy, dx, dy)
-}
-
-func sortEdge(a, b int) [2]int {
-	if a < b {
-		return [2]int{a, b}
+	for i := range tris {
+		tr := &tris[i]
+		if !tr.alive {
+			continue
+		}
+		inside := true
+		for j := 0; j < 3; j++ {
+			if pp.orient(tr.v[j], tr.v[(j+1)%3], p) < 0 {
+				inside = false
+				break
+			}
+		}
+		if inside {
+			return i
+		}
 	}
-	return [2]int{b, a}
+	return 0
 }

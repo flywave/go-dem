@@ -26,7 +26,7 @@ func TestOutlierZ_Basic(t *testing.T) {
 		t.Fatal("nil mask returned")
 	}
 	if !mask[50] {
-		t.Log("outlierz: spike at 50 not detected (may depend on binning)")
+		t.Error("outlierz: spike at 50 not detected")
 	}
 }
 
@@ -55,7 +55,22 @@ func TestOutlierZ_NoOutliers(t *testing.T) {
 			count++
 		}
 	}
-	t.Logf("outlierz: %d/%d masked (should be 0 with 99.9th pct)", count, len(pts))
+	if count != 0 {
+		t.Errorf("outlierz: %d/%d masked, expected 0 with 99.9th pct", count, len(pts))
+	}
+}
+
+func TestOutlierZ_NilOptions(t *testing.T) {
+	pts := []Point3D{
+		{X: 0, Y: 0, Z: 10},
+		{X: 1, Y: 0, Z: 10},
+		{X: 0, Y: 1, Z: 10},
+		{X: 1, Y: 1, Z: 9999},
+	}
+	mask := OutlierZFilter(pts, nil)
+	if mask == nil || len(mask) != len(pts) {
+		t.Fatalf("expected %d results, got %d", len(pts), len(mask))
+	}
 }
 
 func TestOutlierZ_Empty(t *testing.T) {

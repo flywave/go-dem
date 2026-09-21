@@ -25,7 +25,7 @@ require (
 	github.com/pborman/uuid v1.2.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	golang.org/x/image v0.28.0 // indirect
-	gonum.org/v1/gonum v0.8.2 // indirect
+	gonum.org/v1/gonum v0.16.0 // indirect
 )
 
 replace github.com/flywave/go-geo => ../go-geo

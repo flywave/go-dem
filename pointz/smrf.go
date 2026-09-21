@@ -2,7 +2,6 @@ package pointz
 
 import (
 	"math"
-	"sort"
 )
 
 type SMRFGroundClassificationOptions struct {
@@ -85,7 +84,7 @@ func ClassifyGroundSMRF(points []Point3D, opts *SMRFGroundClassificationOptions)
 		}
 	}
 
-	ZImin = knnfillGrid(ZImin, points, cols, rows, minX, minY, cell, 8)
+	ZImin = knnfillGrid(ZImin, cols, rows, minX, minY, cell, 8)
 
 	negZImin := make([]float64, len(ZImin))
 	for i, v := range ZImin {
@@ -110,17 +109,10 @@ func ClassifyGroundSMRF(points []Point3D, opts *SMRFGroundClassificationOptions)
 			ZIpro[i] = math.NaN()
 		}
 	}
-	ZIpro = knnfillGrid(ZIpro, points, cols, rows, minX, minY, cell, 8)
+	ZIpro = knnfillGrid(ZIpro, cols, rows, minX, minY, cell, 8)
 
-	gsurfs := make([]float64, rows*cols)
-	for r := 1; r < rows-1; r++ {
-		for c := 1; c < cols-1; c++ {
-			dx := (ZIpro[r*cols+min(c+1, cols-1)] - ZIpro[r*cols+max(c-1, 0)]) / (2 * cell * cell)
-			dy := (ZIpro[min(r+1, rows-1)*cols+c] - ZIpro[max(r-1, 0)*cols+c]) / (2 * cell * cell)
-			gsurfs[r*cols+c] = math.Sqrt(dx*dx + dy*dy)
-		}
-	}
-	gsurfsFill := knnfillGrid(gsurfs, points, cols, rows, minX, minY, cell, 8)
+	gsurfs := surfaceSlope(ZIpro, rows, cols, cell)
+	gsurfsFill := knnfillGrid(gsurfs, cols, rows, minX, minY, cell, 8)
 
 	scalar := opts.Scalar
 	if scalar <= 0 {
@@ -152,7 +144,52 @@ func ClassifyGroundSMRF(points []Point3D, opts *SMRFGroundClassificationOptions)
 	return classification
 }
 
-func knnfillGrid(grid []float64, points []Point3D, cols, rows int, minX, minY, cell float64, k int) []float64 {
+func surfaceSlope(ZIpro []float64, rows, cols int, cell float64) []float64 {
+	gsurfs := make([]float64, rows*cols)
+	for i := range gsurfs {
+		gsurfs[i] = math.NaN()
+	}
+	for r := 0; r < rows; r++ {
+		for c := 0; c < cols; c++ {
+			zl := ZIpro[r*cols+max(c-1, 0)]
+			zr := ZIpro[r*cols+min(c+1, cols-1)]
+			zd := ZIpro[max(r-1, 0)*cols+c]
+			zu := ZIpro[min(r+1, rows-1)*cols+c]
+			if math.IsNaN(zl) || math.IsNaN(zr) || math.IsNaN(zd) || math.IsNaN(zu) {
+				continue
+			}
+			dx := (zr - zl) / (2 * cell)
+			dy := (zu - zd) / (2 * cell)
+			gsurfs[r*cols+c] = math.Sqrt(dx*dx + dy*dy)
+		}
+	}
+	return gsurfs
+}
+
+type kv struct {
+	dist float64
+	val  float64
+}
+
+func siftDownKV(h []kv, i int) {
+	for {
+		l := 2*i + 1
+		if l >= len(h) {
+			return
+		}
+		m := l
+		if rr := l + 1; rr < len(h) && h[rr].dist > h[l].dist {
+			m = rr
+		}
+		if h[i].dist >= h[m].dist {
+			return
+		}
+		h[i], h[m] = h[m], h[i]
+		i = m
+	}
+}
+
+func knnfillGrid(grid []float64, cols, rows int, minX, minY, cell float64, k int) []float64 {
 	type ptval struct {
 		x, y, z float64
 	}
@@ -175,6 +212,11 @@ func knnfillGrid(grid []float64, points []Point3D, cols, rows int, minX, minY, c
 	out := make([]float64, len(grid))
 	copy(out, grid)
 
+	kn := k
+	if kn > len(valid) {
+		kn = len(valid)
+	}
+
 	for c := 0; c < cols; c++ {
 		for r := 0; r < rows; r++ {
 			idx := r*cols + c
@@ -184,27 +226,31 @@ func knnfillGrid(grid []float64, points []Point3D, cols, rows int, minX, minY, c
 			x := minX + (float64(c)+0.5)*cell
 			y := minY + (float64(r)+0.5)*cell
 
-			type kv struct {
-				dist float64
-				val  float64
-			}
-			kvs := make([]kv, len(valid))
-			for i, v := range valid {
+			h := make([]kv, 0, kn)
+			for _, v := range valid {
 				dx := x - v.x
 				dy := y - v.y
-				kvs[i] = kv{dist: dx*dx + dy*dy, val: v.z}
-			}
-			sort.Slice(kvs, func(i, j int) bool { return kvs[i].dist < kvs[j].dist })
-			kn := k
-			if kn > len(kvs) {
-				kn = len(kvs)
+				d := dx*dx + dy*dy
+				if len(h) < kn {
+					h = append(h, kv{dist: d, val: v.z})
+					if len(h) == kn {
+						for i := len(h)/2 - 1; i >= 0; i-- {
+							siftDownKV(h, i)
+						}
+					}
+					continue
+				}
+				if d < h[0].dist {
+					h[0] = kv{dist: d, val: v.z}
+					siftDownKV(h, 0)
+				}
 			}
 
 			var sum float64
-			for i := 0; i < kn; i++ {
-				sum += kvs[i].val
+			for _, e := range h {
+				sum += e.val
 			}
-			out[idx] = sum / float64(kn)
+			out[idx] = sum / float64(len(h))
 		}
 	}
 	return out
@@ -238,30 +284,33 @@ func progressiveFilter(ZImin []float64, slope, maxWindow float64, cols, rows int
 
 func erodeDiamond(src []float64, rows, cols int) []float64 {
 	dst := make([]float64, len(src))
-	copy(dst, src)
 	for r := 0; r < rows; r++ {
 		for c := 0; c < cols; c++ {
 			idx := r*cols + c
-			if math.IsNaN(src[idx]) {
+			v := src[idx]
+			if math.IsNaN(v) {
+				dst[idx] = v
 				continue
 			}
-			neighbors := []int{idx}
+			minVal := v
 			if c > 0 {
-				neighbors = append(neighbors, r*cols+(c-1))
+				if n := src[idx-1]; !math.IsNaN(n) && n < minVal {
+					minVal = n
+				}
 			}
 			if c < cols-1 {
-				neighbors = append(neighbors, r*cols+(c+1))
+				if n := src[idx+1]; !math.IsNaN(n) && n < minVal {
+					minVal = n
+				}
 			}
 			if r > 0 {
-				neighbors = append(neighbors, (r-1)*cols+c)
+				if n := src[idx-cols]; !math.IsNaN(n) && n < minVal {
+					minVal = n
+				}
 			}
 			if r < rows-1 {
-				neighbors = append(neighbors, (r+1)*cols+c)
-			}
-			minVal := src[idx]
-			for _, ni := range neighbors {
-				if !math.IsNaN(src[ni]) && src[ni] < minVal {
-					minVal = src[ni]
+				if n := src[idx+cols]; !math.IsNaN(n) && n < minVal {
+					minVal = n
 				}
 			}
 			dst[idx] = minVal
@@ -279,23 +328,25 @@ func dilateDiamond(src []float64, rows, cols int, radius int) []float64 {
 		for r := 0; r < rows; r++ {
 			for c := 0; c < cols; c++ {
 				idx := r*cols + c
-				neighbors := []int{idx}
+				maxVal := tmp[idx]
 				if c > 0 {
-					neighbors = append(neighbors, r*cols+(c-1))
+					if n := tmp[idx-1]; !math.IsNaN(n) && n > maxVal {
+						maxVal = n
+					}
 				}
 				if c < cols-1 {
-					neighbors = append(neighbors, r*cols+(c+1))
+					if n := tmp[idx+1]; !math.IsNaN(n) && n > maxVal {
+						maxVal = n
+					}
 				}
 				if r > 0 {
-					neighbors = append(neighbors, (r-1)*cols+c)
+					if n := tmp[idx-cols]; !math.IsNaN(n) && n > maxVal {
+						maxVal = n
+					}
 				}
 				if r < rows-1 {
-					neighbors = append(neighbors, (r+1)*cols+c)
-				}
-				maxVal := tmp[idx]
-				for _, ni := range neighbors {
-					if !math.IsNaN(tmp[ni]) && tmp[ni] > maxVal {
-						maxVal = tmp[ni]
+					if n := tmp[idx+cols]; !math.IsNaN(n) && n > maxVal {
+						maxVal = n
 					}
 				}
 				dst[idx] = maxVal

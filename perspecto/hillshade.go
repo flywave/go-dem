@@ -25,7 +25,7 @@ func Hillshade(data []float64, region *dem.Region, opts *Options) []float64 {
 		noData = dem.DefaultNoData
 	}
 
-	azimuthRad := azimuth * math.Pi / 180
+	azimuthRad := (360 - azimuth + 90) * math.Pi / 180
 	altitudeRad := altitude * math.Pi / 180
 
 	w, h := region.XSize, region.YSize
@@ -59,7 +59,9 @@ func Hillshade(data []float64, region *dem.Region, opts *Options) []float64 {
 			zS := data[(y+1)*w+x]
 			zSE := data[(y+1)*w+(x+1)]
 
-			if hasNoData([]float64{zNW, zN, zNE, zW, zE, zSW, zS, zSE}, noData) {
+			if isNoData(zNW, noData) || isNoData(zN, noData) || isNoData(zNE, noData) ||
+				isNoData(zW, noData) || isNoData(zE, noData) || isNoData(zSW, noData) ||
+				isNoData(zS, noData) || isNoData(zSE, noData) {
 				result[idx] = noData
 				continue
 			}
@@ -86,34 +88,45 @@ func Hillshade(data []float64, region *dem.Region, opts *Options) []float64 {
 		}
 	}
 
+	fillBorderMean(result, data, w, h, noData)
+
+	return result
+}
+
+func isNoData(v, noData float64) bool {
+	return v == noData || math.IsNaN(v)
+}
+
+func fillBorderMean(result, data []float64, w, h int, noData float64) {
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
-			if y == 0 || y == h-1 || x == 0 || x == w-1 {
-				idx := y*w + x
-				if data[idx] != noData && !math.IsNaN(data[idx]) {
-					var sum, count float64
-					for dy := -1; dy <= 1; dy++ {
-						for dx := -1; dx <= 1; dx++ {
-							nx, ny := x+dx, y+dy
-							if nx < 0 || nx >= w || ny < 0 || ny >= h {
-								continue
-							}
-							nidx := ny*w + nx
-							if result[nidx] != noData && !math.IsNaN(result[nidx]) {
-								sum += result[nidx]
-								count++
-							}
-						}
+			if y != 0 && y != h-1 && x != 0 && x != w-1 {
+				continue
+			}
+			idx := y*w + x
+			if isNoData(data[idx], noData) {
+				continue
+			}
+			var sum, count float64
+			for dy := -1; dy <= 1; dy++ {
+				for dx := -1; dx <= 1; dx++ {
+					nx, ny := x+dx, y+dy
+					if nx < 0 || nx >= w || ny < 0 || ny >= h {
+						continue
 					}
-					if count > 0 {
-						result[idx] = sum / count
+					nidx := ny*w + nx
+					if isNoData(result[nidx], noData) {
+						continue
 					}
+					sum += result[nidx]
+					count++
 				}
+			}
+			if count > 0 {
+				result[idx] = sum / count
 			}
 		}
 	}
-
-	return result
 }
 
 func hasNoData(vals []float64, noData float64) bool {
@@ -158,7 +171,8 @@ func Slope(data []float64, region *dem.Region, opts *Options) []float64 {
 			zN := data[(y-1)*w+x]
 			zS := data[(y+1)*w+x]
 
-			if hasNoData([]float64{zW, zE, zN, zS}, noData) {
+			if isNoData(zW, noData) || isNoData(zE, noData) ||
+				isNoData(zN, noData) || isNoData(zS, noData) {
 				result[idx] = noData
 				continue
 			}
@@ -176,14 +190,7 @@ func Slope(data []float64, region *dem.Region, opts *Options) []float64 {
 		}
 	}
 
-	for y := 0; y < h; y++ {
-		if data[y*w] != noData && result[y*w] == 0 {
-			result[y*w] = result[y*w+1]
-		}
-		if data[y*w+w-1] != noData && result[y*w+w-1] == 0 {
-			result[y*w+w-1] = result[y*w+w-2]
-		}
-	}
+	fillBorderMean(result, data, w, h, noData)
 
 	return result
 }
@@ -196,6 +203,10 @@ func Aspect(data []float64, region *dem.Region, opts *Options) []float64 {
 
 	w, h := region.XSize, region.YSize
 	resX := region.XRes
+	resY := region.YRes
+	if resY <= 0 {
+		resY = resX
+	}
 
 	result := make([]float64, w*h)
 
@@ -213,7 +224,8 @@ func Aspect(data []float64, region *dem.Region, opts *Options) []float64 {
 			zSW := data[(y+1)*w+(x-1)]
 			zNW := data[(y-1)*w+(x-1)]
 
-			if hasNoData([]float64{zNE, zSE, zSW, zNW}, noData) {
+			if isNoData(zNE, noData) || isNoData(zSE, noData) ||
+				isNoData(zSW, noData) || isNoData(zNW, noData) {
 				result[idx] = noData
 				continue
 			}
@@ -224,9 +236,9 @@ func Aspect(data []float64, region *dem.Region, opts *Options) []float64 {
 
 			dzdy := (zSW + 2*data[(y+1)*w+x] + zSE) -
 				(zNW + 2*data[(y-1)*w+x] + zNE)
-			dzdy /= (8 * resX)
+			dzdy /= (8 * resY)
 
-			aspect := math.Atan2(dzdx, dzdy) * 180 / math.Pi
+			aspect := math.Atan2(dzdy, -dzdx) * 180 / math.Pi
 			aspect = 90 - aspect
 			if aspect < 0 {
 				aspect += 360
@@ -289,7 +301,11 @@ func interpolateColor(z float64, cmap []ColorStop) (uint8, uint8, uint8) {
 
 	for i := 0; i < len(cmap)-1; i++ {
 		if z >= cmap[i].Value && z <= cmap[i+1].Value {
-			t := (z - cmap[i].Value) / (cmap[i+1].Value - cmap[i].Value)
+			span := cmap[i+1].Value - cmap[i].Value
+			if span == 0 {
+				return cmap[i+1].R, cmap[i+1].G, cmap[i+1].B
+			}
+			t := (z - cmap[i].Value) / span
 			r := uint8(float64(cmap[i].R) + t*float64(int(cmap[i+1].R)-int(cmap[i].R)))
 			g := uint8(float64(cmap[i].G) + t*float64(int(cmap[i+1].G)-int(cmap[i].G)))
 			b := uint8(float64(cmap[i].B) + t*float64(int(cmap[i+1].B)-int(cmap[i].B)))
@@ -317,11 +333,17 @@ func ShadedRelief(data []float64, region *dem.Region, opts *ShadedReliefOptions)
 	if opacity <= 0 {
 		opacity = 0.6
 	}
+	if opacity > 1 {
+		opacity = 1
+	}
 
 	w, h := region.XSize, region.YSize
 	pixels := make([]uint8, w*h*3)
 
 	noData := opts.HillshadeOpts.NoData
+	if noData == 0 {
+		noData = opts.ColorOpts.NoData
+	}
 	if noData == 0 {
 		noData = dem.DefaultNoData
 	}

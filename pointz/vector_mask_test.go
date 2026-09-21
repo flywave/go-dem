@@ -119,3 +119,14 @@ func TestVectorMaskFilter_EmptyPoints(t *testing.T) {
 		t.Error("nil points should return nil")
 	}
 }
+
+func TestVectorMaskFilter_MissingFile(t *testing.T) {
+	pts := []Point3D{{X: 0, Y: 0}}
+	mask, err := VectorMaskFilter(pts, &VectorMaskOptions{MaskPath: "/nonexistent/pointz_mask.geojson"})
+	if err == nil {
+		t.Fatal("missing mask file should return error")
+	}
+	if mask != nil {
+		t.Error("error case should return nil mask")
+	}
+}

@@ -93,3 +93,47 @@ func TestConvexHull_Empty(t *testing.T) {
 		t.Error("empty hull should have 0 points")
 	}
 }
+
+func TestConvexHull_CollinearBoundary(t *testing.T) {
+	pts := []Point3D{
+		{X: 0, Y: 0}, {X: 5, Y: 0}, {X: 10, Y: 0}, {X: 10, Y: 10}, {X: 0, Y: 10},
+	}
+	hull := computeConvexHull(pts)
+	if len(hull.Points) != 4 {
+		t.Errorf("collinear midpoint (5,0) must not be a hull vertex, got %d vertices: %v", len(hull.Points), hull.Points)
+	}
+	for _, p := range hull.Points {
+		if p.X == 5 && p.Y == 0 {
+			t.Error("collinear midpoint (5,0) should not appear in the hull")
+		}
+	}
+}
+
+func TestConvexHull_LargeCoordinates(t *testing.T) {
+	pts := []Point3D{
+		{X: 500000, Y: 4000000},
+		{X: 500010, Y: 4000000},
+		{X: 500010, Y: 4000010},
+		{X: 500000, Y: 4000010},
+		{X: 500005, Y: 4000005},
+	}
+	hull := computeConvexHull(pts)
+	if len(hull.Points) != 4 {
+		t.Errorf("UTM-scale square: expected 4 hull vertices, got %d", len(hull.Points))
+	}
+	inside := hull.KeepPointsInside([]Point3D{{X: 500005, Y: 4000005}, {X: 499000, Y: 3999000}})
+	if len(inside) != 1 {
+		t.Errorf("UTM-scale: expected 1 inside point, got %d", len(inside))
+	}
+}
+
+func TestConvexHull_DelaunayError(t *testing.T) {
+	pts := []Point3D{{X: 0, Y: 0}, {X: 1, Y: 0}, {X: 2, Y: 0}, {X: 3, Y: 0}}
+	hull := computeConvexHull(pts)
+	if len(hull.delaunay) != 0 && hull.delaunayErr == nil {
+		t.Error("failed triangulation should leave an observable error signal")
+	}
+	if len(hull.Points) < 2 {
+		t.Error("collinear input should still produce a degenerate hull")
+	}
+}

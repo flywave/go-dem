@@ -31,14 +31,32 @@ func TestDensity_Median(t *testing.T) {
 		Resolution: 2,
 		Mode:       DensityMedian,
 	})
-	keptZ := 0.0
 	for i, m := range mask {
-		if !m {
-			keptZ = pts[i].Z
+		if !m && i != 2 {
+			t.Errorf("median mode should keep the Z=15 point, kept index %d (Z=%.0f)", i, pts[i].Z)
+		}
+		if m && i == 2 {
+			t.Error("median mode should keep the Z=15 point")
 		}
 	}
-	if keptZ != 15 {
-		t.Logf("density median: kept Z=%.0f (expected 15)", keptZ)
+}
+
+func TestDensity_MedianAsymmetric(t *testing.T) {
+	pts := []Point3D{
+		{X: 0, Y: 0, Z: 1},
+		{X: 0.1, Y: 0.1, Z: 2},
+		{X: 0.2, Y: 0.2, Z: 3},
+		{X: 0.3, Y: 0.3, Z: 4},
+		{X: 0.4, Y: 0.4, Z: 10},
+	}
+	mask := DensityFilter(pts, &DensityOptions{
+		Resolution: 2,
+		Mode:       DensityMedian,
+	})
+	for i, m := range mask {
+		if !m && pts[i].Z != 3 {
+			t.Errorf("median of {1,2,3,4,10} is 3, kept index %d (Z=%.0f)", i, pts[i].Z)
+		}
 	}
 }
 
@@ -59,7 +77,7 @@ func TestDensity_Mean(t *testing.T) {
 		}
 	}
 	if kept != 1 {
-		t.Logf("density mean: kept %d points (expected 1)", kept)
+		t.Errorf("density mean: kept %d points (expected 1)", kept)
 	}
 }
 
@@ -78,8 +96,21 @@ func TestDensity_Center(t *testing.T) {
 			kept++
 		}
 	}
-	if kept != 2 {
-		t.Logf("density center: kept %d points", kept)
+	if kept != 1 {
+		t.Errorf("density center: both points share one cell, kept %d points (expected 1)", kept)
+	}
+	for i, m := range mask {
+		if !m && i != 1 {
+			t.Errorf("cell center is (2.5,2.5): point (3,3) is closer and should be kept, kept index %d", i)
+		}
+	}
+}
+
+func TestDensity_NilOptions(t *testing.T) {
+	pts := []Point3D{{X: 0, Y: 0, Z: 1}}
+	mask := DensityFilter(pts, nil)
+	if mask == nil || len(mask) != 1 || mask[0] {
+		t.Error("nil opts should keep the single point")
 	}
 }
 

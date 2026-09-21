@@ -1,11 +1,16 @@
 package uncertainty
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"math/rand"
+	"path/filepath"
+	"slices"
+	"strings"
 
 	"github.com/flywave/go-dem"
+	"github.com/flywave/go-dem/waffle"
 	"github.com/flywave/go3d/float64/vec2"
 )
 
@@ -18,18 +23,20 @@ const (
 )
 
 type Options struct {
-	Method          Method
-	NoData          float64
-	SampleFraction  float64
-	SearchRadius    float64
-	Seed            int64
+	Method         Method
+	NoData         float64
+	SampleFraction float64
+	SearchRadius   float64
+	Seed           int64
+	Progress       dem.ProgressFunc
+	Ctx            context.Context
 }
 
 type Result struct {
-	TotalUncertainty       []float64
-	SourceUncertainty      []float64
+	TotalUncertainty         []float64
+	SourceUncertainty        []float64
 	InterpolationUncertainty []float64
-	Proximity              []float64
+	Proximity                []float64
 }
 
 func Estimate(data []float64, region *dem.Region, opts *Options) (*Result, error) {
@@ -62,10 +69,8 @@ func splitSampleUncertainty(data []float64, region *dem.Region, opts *Options) (
 	var validPts []struct {
 		x, y int
 		z    float64
-		geoX, geoY float64
 	}
 
-	gt := region.GeoTransform()
 	w, h := region.XSize, region.YSize
 
 	for y := 0; y < h; y++ {
@@ -75,13 +80,10 @@ func splitSampleUncertainty(data []float64, region *dem.Region, opts *Options) (
 			if z == noData || math.IsNaN(z) {
 				continue
 			}
-			geoX := gt[0] + float64(x)*gt[1] + float64(y)*gt[2]
-			geoY := gt[3] + float64(x)*gt[4] + float64(y)*gt[5]
 			validPts = append(validPts, struct {
 				x, y int
 				z    float64
-				geoX, geoY float64
-			}{x, y, z, geoX, geoY})
+			}{x, y, z})
 		}
 	}
 
@@ -108,48 +110,106 @@ func splitSampleUncertainty(data []float64, region *dem.Region, opts *Options) (
 		proximity[i] = noData
 	}
 
-	minProximity := make([]float64, w*h)
-	for i := range minProximity {
-		minProximity[i] = float64(w + h)
+	radius := searchRadius / region.XRes
+
+	trainCoords := make([]vec2.T, len(trainingPts))
+	for i := range trainingPts {
+		trainCoords[i] = vec2.T{float64(trainingPts[i].x), float64(trainingPts[i].y)}
+	}
+	tree := waffle.NewKDTree(trainCoords)
+
+	cell := int(radius)
+	if cell < 1 {
+		cell = 1
+	}
+	nbx := w/cell + 1
+	nby := h/cell + 1
+	nb := nbx * nby
+	counts := make([]int32, nb)
+	for i := range trainingPts {
+		counts[(trainingPts[i].y/cell)*nbx+trainingPts[i].x/cell]++
+	}
+	starts := make([]int32, nb+1)
+	for i, c := range counts {
+		starts[i+1] = starts[i] + c
+	}
+	items := make([]int32, len(trainingPts))
+	cursor := make([]int32, nb)
+	copy(cursor, starts[:nb])
+	for i := range trainingPts {
+		b := (trainingPts[i].y/cell)*nbx + trainingPts[i].x/cell
+		items[cursor[b]] = int32(i)
+		cursor[b]++
 	}
 
-	for _, vp := range validationPts {
-		var sumWeight, sumVal float64
-		var minDist float64 = -1
-		neighborCount := 0
+	cands := make([]int32, 0, 64)
 
-		for _, tp := range trainingPts {
+	stage := string(opts.Method)
+	dem.ReportProgress(opts.Progress, stage, 0, len(validationPts))
+	for vi, vp := range validationPts {
+		if err := dem.CheckCtx(opts.Ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", stage, err)
+		}
+		var minDist float64 = -1
+		nnIdx, nnDist := tree.KNN(vec2.T{float64(vp.x), float64(vp.y)}, 1)
+		if len(nnIdx) > 0 {
+			minDist = nnDist[0]
+		}
+
+		proximity[vp.y*w+vp.x] = minDist * region.XRes
+
+		if minDist < 1e-10 {
+			continue
+		}
+
+		bx0 := int(math.Floor((float64(vp.x) - radius) / float64(cell)))
+		bx1 := int(math.Floor((float64(vp.x) + radius) / float64(cell)))
+		by0 := int(math.Floor((float64(vp.y) - radius) / float64(cell)))
+		by1 := int(math.Floor((float64(vp.y) + radius) / float64(cell)))
+		if bx0 < 0 {
+			bx0 = 0
+		}
+		if by0 < 0 {
+			by0 = 0
+		}
+		if bx1 > nbx-1 {
+			bx1 = nbx - 1
+		}
+		if by1 > nby-1 {
+			by1 = nby - 1
+		}
+
+		cands = cands[:0]
+		for by := by0; by <= by1; by++ {
+			base := by * nbx
+			for b := base + bx0; b <= base+bx1; b++ {
+				cands = append(cands, items[starts[b]:starts[b+1]]...)
+			}
+		}
+		slices.Sort(cands)
+
+		var sumWeight, sumVal float64
+		neighborCount := 0
+		for _, ti := range cands {
+			tp := &trainingPts[ti]
 			dx := float64(vp.x - tp.x)
 			dy := float64(vp.y - tp.y)
 			dist := math.Sqrt(dx*dx + dy*dy)
-
-			if dist < 1e-10 {
-				sumVal = tp.z
-				sumWeight = 1
-				minDist = 0
-				neighborCount = 1
-				break
-			}
-
-			if dist <= searchRadius/region.XRes {
+			if dist <= radius {
 				weight := 1.0 / (dist*dist + 1e-15)
 				sumWeight += weight
 				sumVal += weight * tp.z
 				neighborCount++
 			}
-
-			if minDist < 0 || dist < minDist {
-				minDist = dist
-			}
 		}
-
-		proximity[vp.y*w+vp.x] = minDist * region.XRes
 
 		if sumWeight > 0 && neighborCount >= 3 {
 			predicted := sumVal / sumWeight
 			err := vp.z - predicted
 			interpUnc[vp.y*w+vp.x] = math.Abs(err)
 		}
+
+		dem.ReportProgress(opts.Progress, stage, vi+1, len(validationPts))
 	}
 
 	interpUncGrid := fillUncertaintyGaps(interpUnc, w, h, noData)
@@ -189,7 +249,12 @@ func proximityUncertainty(data []float64, region *dem.Region, opts *Options) (*R
 	prox := make([]float64, w*h)
 	interpUnc := make([]float64, w*h)
 
+	stage := string(opts.Method)
+	dem.ReportProgress(opts.Progress, stage, 0, h)
 	for y := 0; y < h; y++ {
+		if err := dem.CheckCtx(opts.Ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", stage, err)
+		}
 		for x := 0; x < w; x++ {
 			idx := y*w + x
 			if data[idx] == noData || math.IsNaN(data[idx]) {
@@ -208,7 +273,8 @@ func proximityUncertainty(data []float64, region *dem.Region, opts *Options) (*R
 					if nx < 0 || nx >= w || ny < 0 || ny >= h {
 						continue
 					}
-					if data[ny*w+nx] != noData {
+					nv := data[ny*w+nx]
+					if nv != noData && !math.IsNaN(nv) {
 						dist := math.Sqrt(float64(dx*dx + dy*dy))
 						if dist < minDist {
 							minDist = dist
@@ -216,10 +282,17 @@ func proximityUncertainty(data []float64, region *dem.Region, opts *Options) (*R
 					}
 				}
 			}
-			prox[idx] = minDist
+			if minDist == float64(w+h) {
+				prox[idx] = noData
+				interpUnc[idx] = noData
+				continue
+			}
+			prox[idx] = minDist * region.XRes
 			interpUnc[idx] = minDist * region.XRes * 0.1
 		}
+		dem.ReportProgress(opts.Progress, stage, y+1, h)
 	}
+	dem.ReportProgress(opts.Progress, stage, h, h)
 
 	return &Result{
 		TotalUncertainty:         interpUnc,
@@ -240,14 +313,19 @@ func combinedUncertainty(data []float64, region *dem.Region, opts *Options) (*Re
 		return nil, err
 	}
 
+	noData := opts.NoData
+	if noData == 0 {
+		noData = dem.DefaultNoData
+	}
+
 	w, h := region.XSize, region.YSize
 	total := make([]float64, w*h)
 	for i := range total {
-		if ss.TotalUncertainty[i] != opts.NoData && prox.TotalUncertainty[i] != opts.NoData {
+		if ss.TotalUncertainty[i] != noData && prox.TotalUncertainty[i] != noData {
 			total[i] = math.Sqrt(ss.TotalUncertainty[i]*ss.TotalUncertainty[i] +
 				prox.TotalUncertainty[i]*prox.TotalUncertainty[i])
 		} else {
-			total[i] = opts.NoData
+			total[i] = noData
 		}
 	}
 
@@ -280,25 +358,32 @@ func fillUncertaintyGaps(data []float64, w, h int, noData float64) []float64 {
 		return result
 	}
 
+	tree := waffle.NewKDTree(validPts)
+	k := 8
+	if k > len(validPts) {
+		k = len(validPts)
+	}
+
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
 			idx := y*w + x
 			if data[idx] != noData && !math.IsNaN(data[idx]) {
 				continue
 			}
+			idxs, dists := tree.KNN(vec2.T{float64(x), float64(y)}, k)
+			if len(idxs) == 0 {
+				continue
+			}
 			var sumWeight, sumVal float64
-			for i, vp := range validPts {
-				dx := float64(x) - vp[0]
-				dy := float64(y) - vp[1]
-				dist := dx*dx + dy*dy
-				if dist < 1e-10 {
-					sumVal = validVals[i]
+			for i, vi := range idxs {
+				if dists[i] < 1e-10 {
+					sumVal = validVals[vi]
 					sumWeight = 1
 					break
 				}
-				weight := 1.0 / dist
+				weight := 1.0 / (dists[i] * dists[i])
 				sumWeight += weight
-				sumVal += weight * validVals[i]
+				sumVal += weight * validVals[vi]
 			}
 			if sumWeight > 0 {
 				result[idx] = sumVal / sumWeight
@@ -311,8 +396,8 @@ func fillUncertaintyGaps(data []float64, w, h int, noData float64) []float64 {
 
 func WriteUncertainty(unc *Result, region *dem.Region, demPath string, noData float64) error {
 	base := demPath
-	if len(demPath) > 4 && demPath[len(demPath)-4:] == ".tif" {
-		base = demPath[:len(demPath)-4]
+	if ext := filepath.Ext(demPath); ext != "" && strings.EqualFold(ext, ".tif") {
+		base = strings.TrimSuffix(demPath, ext)
 	}
 	if err := dem.CreateDEM(unc.TotalUncertainty, region, base+"_tvu.tif", noData); err != nil {
 		return fmt.Errorf("total uncertainty: %v", err)

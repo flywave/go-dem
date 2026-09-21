@@ -1,6 +1,7 @@
 package grits
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/flywave/go-dem"
@@ -19,7 +20,13 @@ func (f *slopeFilter) Run(data []float64, region *dem.Region, opts *Options) ([]
 	}
 	noData := opts.GetNoData()
 
-	slope := computeSlopeDegrees(data, region.XSize, region.YSize, region.XRes, noData)
+	if err := startFilter(opts, f.Name(), region.YSize); err != nil {
+		return nil, err
+	}
+	slope, err := computeSlopeDegreesOpts(data, region.XSize, region.YSize, region.XRes, region.YRes, noData, opts, f.Name())
+	if err != nil {
+		return nil, err
+	}
 
 	result := make([]float64, len(data))
 	copy(result, data)
@@ -35,13 +42,23 @@ func (f *slopeFilter) Run(data []float64, region *dem.Region, opts *Options) ([]
 		}
 	}
 
+	finishFilter(opts, f.Name(), h)
 	return result, nil
 }
 
-func computeSlopeDegrees(data []float64, w, h int, res float64, noData float64) []float64 {
+func computeSlopeDegrees(data []float64, w, h int, resX, resY float64, noData float64) []float64 {
+	slope, _ := computeSlopeDegreesOpts(data, w, h, resX, resY, noData, nil, "")
+	return slope
+}
+
+func computeSlopeDegreesOpts(data []float64, w, h int, resX, resY float64, noData float64, opts *Options, stage string) ([]float64, error) {
+	prog, ctx := progressOf(opts)
 	slope := make([]float64, w*h)
 
 	for y := 1; y < h-1; y++ {
+		if err := dem.CheckCtx(ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", stage, err)
+		}
 		for x := 1; x < w-1; x++ {
 			idx := y*w + x
 			z := data[idx]
@@ -60,13 +77,14 @@ func computeSlopeDegrees(data []float64, w, h int, res float64, noData float64) 
 				continue
 			}
 
-			dzdx := (zE - zW) / (2 * res)
-			dzdy := (zS - zN) / (2 * res)
+			dzdx := (zE - zW) / (2 * resX)
+			dzdy := (zS - zN) / (2 * resY)
 
 			slopeRad := math.Atan(math.Sqrt(dzdx*dzdx + dzdy*dzdy))
 			slope[idx] = slopeRad * 180 / math.Pi
 		}
+		dem.ReportProgress(prog, stage, y+1, h)
 	}
 
-	return slope
+	return slope, nil
 }

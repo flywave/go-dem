@@ -1,6 +1,7 @@
 package grits
 
 import (
+	"fmt"
 	"math"
 	"sort"
 
@@ -10,6 +11,10 @@ import (
 type flattenNoDataFilter struct {
 	baseGrits
 }
+
+type cell struct{ x, y int }
+
+var neighborDirs = [4][2]int{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}
 
 func init() {
 	Register(FilterFlattenNoData, func() Grits {
@@ -25,16 +30,22 @@ func (f *flattenNoDataFilter) Run(data []float64, region *dem.Region, opts *Opti
 		threshold = 100
 	}
 
+	if err := startFilter(opts, f.Name(), h); err != nil {
+		return nil, err
+	}
+
 	labeled := make([]int, len(data))
 	for i := range labeled {
 		labeled[i] = -1
 	}
 
-	type cell struct{ x, y int }
 	nextLabel := 0
 	sizes := map[int]int{}
 
 	for y := 0; y < h; y++ {
+		if err := dem.CheckCtx(opts.Ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", f.Name(), err)
+		}
 		for x := 0; x < w; x++ {
 			idx := y*w + x
 			if data[idx] == nd || math.IsNaN(data[idx]) {
@@ -51,8 +62,7 @@ func (f *flattenNoDataFilter) Run(data []float64, region *dem.Region, opts *Opti
 			for head < len(queue) {
 				cx, cy := queue[head].x, queue[head].y
 				head++
-				dirs := [][2]int{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}
-				for _, d := range dirs {
+				for _, d := range neighborDirs {
 					nx, ny := cx+d[0], cy+d[1]
 					if nx < 0 || nx >= w || ny < 0 || ny >= h {
 						continue
@@ -71,6 +81,7 @@ func (f *flattenNoDataFilter) Run(data []float64, region *dem.Region, opts *Opti
 			}
 			nextLabel++
 		}
+		dem.ReportProgress(opts.Progress, f.Name(), (y+1)/2, h)
 	}
 
 	smallLabels := map[int]bool{}
@@ -80,6 +91,7 @@ func (f *flattenNoDataFilter) Run(data []float64, region *dem.Region, opts *Opti
 		}
 	}
 	if len(smallLabels) == 0 {
+		finishFilter(opts, f.Name(), h)
 		return data, nil
 	}
 
@@ -87,6 +99,9 @@ func (f *flattenNoDataFilter) Run(data []float64, region *dem.Region, opts *Opti
 	copy(result, data)
 
 	for y := 0; y < h; y++ {
+		if err := dem.CheckCtx(opts.Ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", f.Name(), err)
+		}
 		for x := 0; x < w; x++ {
 			idx := y*w + x
 			if data[idx] == nd || math.IsNaN(data[idx]) {
@@ -119,7 +134,9 @@ func (f *flattenNoDataFilter) Run(data []float64, region *dem.Region, opts *Opti
 				result[idx] = pct5
 			}
 		}
+		dem.ReportProgress(opts.Progress, f.Name(), (h+y+1)/2, h)
 	}
 
+	finishFilter(opts, f.Name(), h)
 	return result, nil
 }

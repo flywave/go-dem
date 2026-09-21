@@ -27,9 +27,13 @@ func TestParseSRS_Empty(t *testing.T) {
 }
 
 func TestParseSRS_Invalid(t *testing.T) {
-	p := geo.NewProj("INVALID")
-	if p == nil {
-		t.Log("invalid SRS returns nil (expected)")
+	_, err := ParseSRS("NOT_A_REAL_SRS_12345")
+	if err == nil {
+		t.Fatal("expected error for unrecognized SRS")
+	}
+	p := geo.NewProj("NOT_A_REAL_SRS_12345")
+	if !isNilProj(p) {
+		t.Skip("go-geo changed behavior: NewProj no longer returns typed nil")
 	}
 }
 
@@ -65,6 +69,9 @@ func TestSRSGetCSType(t *testing.T) {
 	}
 	if tp := SRSGetCSType(""); tp != "UNKNOWN" {
 		t.Errorf("empty: expected UNKNOWN, got %s", tp)
+	}
+	if tp := SRSGetCSType("NOT_A_REAL_SRS_12345"); tp != "UNKNOWN" {
+		t.Errorf("invalid: expected UNKNOWN, got %s", tp)
 	}
 }
 

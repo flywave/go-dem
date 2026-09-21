@@ -4,15 +4,15 @@ import (
 	"fmt"
 
 	"github.com/flywave/flywave-pointcloud"
+	"github.com/flywave/go-dem"
 	"github.com/flywave/go-geo"
 	"github.com/flywave/go3d/float64/vec2"
 )
 
 type LASFile struct {
-	Path        string
-	PointCount  int64
-	Bounds      vec2.Rect
-	SRS         string
+	Path   string
+	Bounds vec2.Rect
+	SRS    string
 }
 
 func OpenLAS(path string) (*LASFile, error) {
@@ -57,8 +57,12 @@ func (lf *LASFile) BBoxString() string {
 }
 
 func (lf *LASFile) GetSRS() geo.Proj {
-	if lf.SRS != "" {
-		return geo.NewProj(lf.SRS)
+	if lf.SRS == "" {
+		return nil
 	}
-	return geo.NewProj("EPSG:4326")
+	p, err := dem.ParseSRS(lf.SRS)
+	if err != nil {
+		return nil
+	}
+	return p
 }

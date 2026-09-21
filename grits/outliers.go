@@ -1,6 +1,7 @@
 package grits
 
 import (
+	"fmt"
 	"math"
 	"sort"
 
@@ -48,6 +49,28 @@ func (f *outliersFilter) Run(data []float64, region *dem.Region, opts *Options) 
 
 	score := make([]float64, len(data))
 
+	var roughness []float64
+	if mode == "aggressive" || multipass > 1 {
+		roughness = computeRoughness(data, w, h, nd)
+	}
+
+	maxHalf := minWin / 2
+	if multipass > 1 {
+		maxHalf = maxWin / 2
+	}
+	vals := make([]float64, 0, (maxHalf*2+1)*(maxHalf*2+1))
+	sorted := make([]float64, (maxHalf*2+1)*(maxHalf*2+1))
+
+	if err := startFilter(opts, f.Name(), h); err != nil {
+		return nil, err
+	}
+	attrCount := 2
+	if roughness != nil {
+		attrCount = 3
+	}
+	totalRows := multipass * attrCount * h
+	rowsDone := 0
+
 	for pass := 0; pass < multipass; pass++ {
 		winSize := minWin
 		if multipass > 1 {
@@ -64,16 +87,15 @@ func (f *outliersFilter) Run(data []float64, region *dem.Region, opts *Options) 
 
 		passScore := make([]float64, len(data))
 		attrs := []struct {
-			name  string
-			vals  []float64
+			name   string
+			vals   []float64
 			weight float64
 		}{
 			{"elevation", data, 1.0},
 			{"slope", slopeData, 0.25},
 		}
 
-		if mode == "aggressive" || multipass > 1 {
-			roughness := computeRoughness(data, w, h, nd)
+		if roughness != nil {
 			attrs = append(attrs, struct {
 				name   string
 				vals   []float64
@@ -83,13 +105,16 @@ func (f *outliersFilter) Run(data []float64, region *dem.Region, opts *Options) 
 
 		for _, attr := range attrs {
 			for y := 0; y < h; y++ {
+				if err := dem.CheckCtx(opts.Ctx); err != nil {
+					return nil, fmt.Errorf("%s: %w", f.Name(), err)
+				}
 				for x := 0; x < w; x++ {
 					idx := y*w + x
 					if result[idx] == nd || math.IsNaN(result[idx]) {
 						continue
 					}
 
-					var vals []float64
+					vals = vals[:0]
 					for ky := -half; ky <= half; ky++ {
 						for kx := -half; kx <= half; kx++ {
 							ix, iy := x+kx, y+ky
@@ -97,7 +122,7 @@ func (f *outliersFilter) Run(data []float64, region *dem.Region, opts *Options) 
 								continue
 							}
 							v := attr.vals[iy*w+ix]
-							if math.IsNaN(v) {
+							if v == nd || math.IsNaN(v) {
 								continue
 							}
 							vals = append(vals, v)
@@ -107,12 +132,13 @@ func (f *outliersFilter) Run(data []float64, region *dem.Region, opts *Options) 
 						continue
 					}
 
-					sorted := make([]float64, len(vals))
+					n := len(vals)
 					copy(sorted, vals)
-					sort.Float64s(sorted)
+					window := sorted[:n]
+					sort.Float64s(window)
 
-					q1 := percentileValue(sorted, 25)
-					q3 := percentileValue(sorted, percentile)
+					q1 := percentileValue(window, 25)
+					q3 := percentileValue(window, percentile)
 					iqr := q3 - q1
 					if iqr < 1e-12 {
 						continue
@@ -130,6 +156,10 @@ func (f *outliersFilter) Run(data []float64, region *dem.Region, opts *Options) 
 						}
 						passScore[idx] += attr.weight * math.Min(diff, 3.0)
 					}
+				}
+				rowsDone++
+				if totalRows > 0 {
+					dem.ReportProgress(opts.Progress, f.Name(), rowsDone*h/totalRows, h)
 				}
 			}
 		}
@@ -149,6 +179,7 @@ func (f *outliersFilter) Run(data []float64, region *dem.Region, opts *Options) 
 		}
 	}
 
+	finishFilter(opts, f.Name(), h)
 	return result, nil
 }
 

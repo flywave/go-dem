@@ -3,7 +3,11 @@ package datum
 import (
 	"errors"
 	"fmt"
+	"math"
+	"sort"
 	"strings"
+
+	"github.com/flywave/go-geoid"
 )
 
 var errHTDPFailed = errors.New("htdp transform failed")
@@ -37,8 +41,8 @@ var TidalFrames = map[int]Frame{
 	5868: {EPSG: 5868, Name: "mhw", Description: "Mean High Water", Type: FrameTidal, Uncertainty: 0},
 	5714: {EPSG: 5714, Name: "msl", Description: "Mean Sea Level", Type: FrameTidal, Uncertainty: 0},
 	5713: {EPSG: 5713, Name: "mtl", Description: "Mean Tide Level", Type: FrameTidal, Uncertainty: 0},
-	0:    {EPSG: 0, Name: "crd", Description: "Columbia River Datum", Type: FrameTidal, Uncertainty: 0},
-	1:    {EPSG: 1, Name: "xgeoid20b", Description: "xgeoid 2020 B", Type: FrameTidal, Uncertainty: 0},
+	-1:   {EPSG: -1, Name: "crd", Description: "Columbia River Datum", Type: FrameTidal, Uncertainty: 0},
+	-2:   {EPSG: -2, Name: "xgeoid20b", Description: "xgeoid 2020 B", Type: FrameTidal, Uncertainty: 0},
 	7968: {EPSG: 7968, Name: "NGVD", Description: "National Geodetic Vertical Datum", Type: FrameTidal, Uncertainty: 0},
 }
 
@@ -98,10 +102,10 @@ var GeoidModels = map[string]struct {
 	Name        string
 	Uncertainty float64
 }{
-	"g2018":  {Name: "geoid 2018", Uncertainty: 0.0127},
-	"g2012b": {Name: "geoid 2012b", Uncertainty: 0.017},
-	"g2012a": {Name: "geoid 2012a", Uncertainty: 0.017},
-	"g1999":  {Name: "geoid 1999", Uncertainty: 0.046},
+	"g2018":   {Name: "geoid 2018", Uncertainty: 0.0127},
+	"g2012b":  {Name: "geoid 2012b", Uncertainty: 0.017},
+	"g2012a":  {Name: "geoid 2012a", Uncertainty: 0.017},
+	"g1999":   {Name: "geoid 1999", Uncertainty: 0.046},
 	"geoid09": {Name: "geoid 2009", Uncertainty: 0.05},
 	"geoid03": {Name: "geoid 2003", Uncertainty: 0.046},
 }
@@ -129,6 +133,28 @@ func GetGeoidUncertainty(model string) float64 {
 	return 0
 }
 
+func geoidUncertainty(models ...geoid.VerticalDatum) float64 {
+	unc := 0.0
+	seen := make(map[geoid.VerticalDatum]bool, len(models))
+	for _, m := range models {
+		if seen[m] {
+			continue
+		}
+		seen[m] = true
+		u := 0.0
+		switch m {
+		case geoid.EGM84:
+			u = GetGeoidUncertainty("geoid09")
+		case geoid.EGM96:
+			u = GetGeoidUncertainty("g1999")
+		case geoid.EGM2008:
+			u = GetGeoidUncertainty("g2012a")
+		}
+		unc = math.Hypot(unc, u)
+	}
+	return unc
+}
+
 func FrameUncertainty(epsg int) float64 {
 	if f := GetFrameByEPSG(epsg); f != nil {
 		return f.Uncertainty
@@ -151,25 +177,37 @@ func FrameTypeOf(epsg int) FrameType {
 
 func GetFrameByName(name string) *Frame {
 	name = strings.ToLower(name)
-	for _, f := range TidalFrames {
-		if strings.Contains(strings.ToLower(f.Name), name) {
-			return &f
+
+	all := make([]*Frame, 0, len(TidalFrames)+len(HTDPFrames)+len(CDNFrames))
+	for _, m := range []map[int]Frame{TidalFrames, HTDPFrames, CDNFrames} {
+		for _, f := range m {
+			cp := f
+			all = append(all, &cp)
 		}
 	}
-	for _, f := range HTDPFrames {
-		if strings.Contains(strings.ToLower(f.Name), name) {
-			return &f
-		}
-		if strings.Contains(strings.ToLower(f.Description), name) {
-			return &f
+
+	for _, f := range all {
+		if strings.ToLower(f.Name) == name {
+			return f
 		}
 	}
-	for _, f := range CDNFrames {
-		if strings.Contains(strings.ToLower(f.Name), name) {
-			return &f
+
+	var matches []*Frame
+	for _, f := range all {
+		if strings.Contains(strings.ToLower(f.Name), name) || strings.Contains(strings.ToLower(f.Description), name) {
+			matches = append(matches, f)
 		}
 	}
-	return nil
+	if len(matches) == 0 {
+		return nil
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		if matches[i].EPSG != matches[j].EPSG {
+			return matches[i].EPSG < matches[j].EPSG
+		}
+		return matches[i].Name < matches[j].Name
+	})
+	return matches[0]
 }
 
 func FrameTypeName(epsg int) string {

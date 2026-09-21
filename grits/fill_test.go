@@ -95,9 +95,37 @@ func TestFillNoDataPixels(t *testing.T) {
 
 	fillNoDataPixels(data, w, h, nd)
 	if data[2*w+2] == nd {
-		t.Log("fillNoDataPixels: center not filled (single isolated noData may not propagate)")
-	} else {
-		t.Logf("fillNoDataPixels: center filled with %.2f", data[2*w+2])
+		t.Fatalf("fillNoDataPixels: center not filled")
+	}
+	if math.Abs(data[2*w+2]-100) > 1e-9 {
+		t.Errorf("fillNoDataPixels: expected 100, got %.2f", data[2*w+2])
+	}
+}
+
+func TestFillNoDataPixels_LargeHole(t *testing.T) {
+	w, h := 10, 10
+	nd := -9999.0
+	data := makeFlatDEM(w, h, 100)
+	for y := 3; y <= 6; y++ {
+		for x := 3; x <= 6; x++ {
+			data[y*w+x] = nd
+		}
+	}
+
+	fillNoDataPixels(data, w, h, nd)
+	for y := 3; y <= 6; y++ {
+		for x := 3; x <= 6; x++ {
+			if data[y*w+x] == nd {
+				t.Errorf("fillNoDataPixels: hole pixel (%d,%d) not filled", x, y)
+			}
+		}
+	}
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			if (x < 3 || x > 6 || y < 3 || y > 6) && math.Abs(data[y*w+x]-100) > 1e-9 {
+				t.Errorf("fillNoDataPixels: valid pixel (%d,%d) modified: %.2f", x, y, data[y*w+x])
+			}
+		}
 	}
 }
 
@@ -113,6 +141,27 @@ func TestFillWithInverseDistance(t *testing.T) {
 	}
 	if math.Abs(data[2*w+2]-100) > 5 {
 		t.Errorf("IDW: expected ~100, got %.2f", data[2*w+2])
+	}
+}
+
+func TestFillWithInverseDistance_Local(t *testing.T) {
+	w, h := 40, 40
+	nd := -9999.0
+	data := make([]float64, w*h)
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			data[y*w+x] = float64(y*10 + x)
+		}
+	}
+	data[10*w+30] = nd
+
+	fillWithInverseDistance(data, w, h, nd)
+	v := data[10*w+30]
+	if v == nd {
+		t.Fatal("IDW fill: hole not filled")
+	}
+	if v < 85 || v > 155 {
+		t.Errorf("IDW fill: expected local value near 105..135, got %.2f", v)
 	}
 }
 

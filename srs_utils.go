@@ -7,40 +7,48 @@ import (
 	"github.com/flywave/go-geo"
 )
 
+func isNilProj(p geo.Proj) bool {
+	if p == nil {
+		return true
+	}
+	sp, ok := p.(*geo.SRSProj4)
+	return ok && sp == nil
+}
+
 func ParseSRS(input string) (geo.Proj, error) {
 	if input == "" {
 		return nil, fmt.Errorf("empty SRS string")
 	}
 	p := geo.NewProj(input)
-	if p == nil {
+	if isNilProj(p) {
 		return nil, fmt.Errorf("unrecognized SRS: %s", input)
 	}
 	return p, nil
 }
 
 func SRSIsLatLong(p geo.Proj) bool {
-	if p == nil {
+	if isNilProj(p) {
 		return false
 	}
 	return p.IsLatLong()
 }
 
 func SRSToWKT(p geo.Proj) string {
-	if p == nil {
+	if isNilProj(p) {
 		return ""
 	}
 	return p.GetDef()
 }
 
 func SRSToProj4(p geo.Proj) string {
-	if p == nil {
+	if isNilProj(p) {
 		return ""
 	}
 	return p.GetDef()
 }
 
 func SRSToEPSG(p geo.Proj) int {
-	if p == nil {
+	if isNilProj(p) {
 		return 0
 	}
 	code := p.GetSrsCode()
@@ -55,7 +63,7 @@ func SRSToEPSG(p geo.Proj) int {
 }
 
 func SRSGetAuthorityCode(p geo.Proj) string {
-	if p == nil {
+	if isNilProj(p) {
 		return ""
 	}
 	return p.GetSrsCode()
@@ -66,7 +74,7 @@ func SRSGetCSType(input string) string {
 		return "UNKNOWN"
 	}
 	p := geo.NewProj(input)
-	if p == nil {
+	if isNilProj(p) {
 		return "UNKNOWN"
 	}
 	if p.IsLatLong() {
@@ -76,24 +84,24 @@ func SRSGetCSType(input string) string {
 }
 
 func SRSIsProjected(p geo.Proj) bool {
-	if p == nil {
+	if isNilProj(p) {
 		return false
 	}
 	return !p.IsLatLong()
 }
 
 func SRSEquals(a, b geo.Proj) bool {
-	if a == nil && b == nil {
+	if isNilProj(a) && isNilProj(b) {
 		return true
 	}
-	if a == nil || b == nil {
+	if isNilProj(a) || isNilProj(b) {
 		return false
 	}
 	return a.GetSrsCode() == b.GetSrsCode()
 }
 
 func SRSClone(p geo.Proj) geo.Proj {
-	if p == nil {
+	if isNilProj(p) {
 		return nil
 	}
 	code := p.GetSrsCode()

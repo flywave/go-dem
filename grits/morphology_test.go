@@ -22,11 +22,14 @@ func TestErode_Basic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("erode error: %v", err)
 	}
-	if res[5*w+5] == nd {
-		t.Log("erode: hole stays hole (correct)")
+	if res[5*w+5] != nd {
+		t.Errorf("erode: hole should stay noData, got %.2f", res[5*w+5])
 	}
-	if res[4*w+4] == nd {
-		t.Log("erode: noData propagated to neighbor (expected with radius=1)")
+	if res[4*w+4] != nd {
+		t.Errorf("erode: neighbor within radius of noData should erode, got %.2f", res[4*w+4])
+	}
+	if res[1*w+1] != 100 {
+		t.Errorf("erode: pixel far from noData should survive, got %.2f", res[1*w+1])
 	}
 }
 
@@ -62,10 +65,13 @@ func TestErode_BorderNoData(t *testing.T) {
 		t.Fatalf("error: %v", err)
 	}
 	if res[1] != nd || res[w] != nd {
-		t.Log("erode: noData propagated to neighbors (expected)")
+		t.Error("erode: noData should propagate to orthogonal neighbors")
 	}
-	if res[w+1] == nd {
-		t.Log("erode: diagonal from noData not eroded (correct for city-block)")
+	if res[w+1] != nd {
+		t.Errorf("erode: square window includes diagonal of noData, should erode, got %.2f", res[w+1])
+	}
+	if res[2*w+2] != 100 {
+		t.Errorf("erode: pixel beyond window of noData should survive, got %.2f", res[2*w+2])
 	}
 }
 
@@ -86,11 +92,31 @@ func TestDilate_Basic(t *testing.T) {
 			dilated++
 		}
 	}
-	if dilated <= 1 {
-		t.Errorf("dilate should expand seed, only %d valid pixels", dilated)
+	if dilated != 9 {
+		t.Errorf("dilate should expand seed to 3x3 block, got %d valid pixels", dilated)
 	}
 	if res[5*w+5] != 100 {
 		t.Errorf("original seed changed: %.2f", res[5*w+5])
+	}
+}
+
+func TestDilate_TakesMax(t *testing.T) {
+	w, h := 10, 10
+	nd := -9999.0
+	data := makeFlatDEM(w, h, nd)
+	data[5*w+5] = 100
+	data[5*w+6] = 200
+
+	d := &dilateFilter{}
+	res, err := d.Run(data, region10x10(), &Options{Radius: 1, NoData: &nd})
+	if err != nil {
+		t.Fatalf("dilate error: %v", err)
+	}
+	if res[4*w+5] != 200 {
+		t.Errorf("dilate must take window maximum, expected 200, got %.2f", res[4*w+5])
+	}
+	if res[6*w+5] != 200 {
+		t.Errorf("dilate must take window maximum, expected 200, got %.2f", res[6*w+5])
 	}
 }
 
@@ -121,11 +147,16 @@ func TestOpen_Basic(t *testing.T) {
 	}
 
 	o := &openFilter{}
-	res, err := o.Run(data, region10x10(), &Options{Radius: 2, NoData: &nd})
+	res, err := o.Run(data, region10x10(), &Options{Radius: 1, NoData: &nd})
 	if err != nil {
 		t.Fatalf("open error: %v", err)
 	}
-	_ = res
+	if res[5*w+5] != nd {
+		t.Errorf("open: hole larger than structuring element should stay noData, got %.2f", res[5*w+5])
+	}
+	if res[0] != 100 {
+		t.Errorf("open: valid area should be restored by the dilate step, got %.2f", res[0])
+	}
 }
 
 func TestClose_Basic(t *testing.T) {
@@ -145,13 +176,15 @@ func TestClose_Basic(t *testing.T) {
 			valid++
 		}
 	}
-	t.Logf("close: %d valid pixels after dilate+erode of single seed", valid)
-	if valid < 1 {
-		t.Errorf("close should preserve at least the seed, got %d", valid)
+	if valid != 1 {
+		t.Errorf("close of single seed should keep exactly the seed pixel, got %d valid", valid)
+	}
+	if res[5*w+5] != 100 {
+		t.Errorf("close should preserve seed value, got %.2f", res[5*w+5])
 	}
 }
 
-func TestDilate_NoChangeWithAllValid(t *testing.T) {
+func TestDilate_AllValidStaysValid(t *testing.T) {
 	w, h := 8, 8
 	nd := -9999.0
 	data := makeRampDEM(w, h)
@@ -161,6 +194,9 @@ func TestDilate_NoChangeWithAllValid(t *testing.T) {
 	for i := range res {
 		if res[i] == nd {
 			t.Errorf("all-valid: pixel %d became noData after dilate", i)
+		}
+		if res[i] < data[i] {
+			t.Errorf("dilate should not decrease values: pixel %d %.0f -> %.2f", i, data[i], res[i])
 		}
 	}
 }
@@ -180,5 +216,12 @@ func TestOpenClose_Involution(t *testing.T) {
 
 	if len(afterClose) != len(data) {
 		t.Error("output size changed")
+	}
+	if afterOpen[5*w+5] != nd || afterOpen[5*w+6] != nd {
+		t.Errorf("open should keep holes larger than the structuring element, got %.2f and %.2f",
+			afterOpen[5*w+5], afterOpen[5*w+6])
+	}
+	if afterClose[5*w+5] != 100 {
+		t.Errorf("close should fill the small remaining gap, got %.2f", afterClose[5*w+5])
 	}
 }

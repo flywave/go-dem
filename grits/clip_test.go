@@ -40,8 +40,16 @@ func TestPointInPolygon_Outside(t *testing.T) {
 
 func TestPointInPolygon_OnEdge(t *testing.T) {
 	poly, _, _, _, _, _ := parsePolygonWKT("POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0))")
-	inside := pointInPolygon(5, 0, poly)
-	t.Logf("point on edge: inside=%v", inside)
+	if !pointInPolygon(5, 0, poly) {
+		t.Error("point on polygon edge should be counted inside")
+	}
+}
+
+func TestParsePolygonWKT_BadCoordinate(t *testing.T) {
+	_, _, _, _, _, err := parsePolygonWKT("POLYGON ((0 0, abc 5, 10 10, 0 0))")
+	if err == nil {
+		t.Error("expected error for non-numeric coordinate")
+	}
 }
 
 func TestClipFilter_NoPolygon(t *testing.T) {

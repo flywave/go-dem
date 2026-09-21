@@ -2,6 +2,8 @@ package waffle
 
 import (
 	"container/heap"
+	"context"
+	"fmt"
 	"math"
 
 	"github.com/flywave/go-dem"
@@ -12,14 +14,17 @@ type inpaintWaffle struct {
 }
 
 func init() {
-	Register("inpaint", func() Waffle {
-		return &inpaintWaffle{baseWaffle: baseWaffle{name: "inpaint"}}
+	Register(dem.MethodInpaint, func() Waffle {
+		return &inpaintWaffle{baseWaffle: baseWaffle{name: string(dem.MethodInpaint)}}
 	})
 }
 
 func (iw *inpaintWaffle) Run(points []Point, opts *Options) (*Result, error) {
 	if len(points) == 0 {
-		return nil, nil
+		return nil, fmt.Errorf("no data points")
+	}
+	if opts == nil || opts.Region == nil {
+		return nil, fmt.Errorf("region is required")
 	}
 
 	region := opts.Region
@@ -42,15 +47,18 @@ func (iw *inpaintWaffle) Run(points []Point, opts *Options) (*Result, error) {
 
 	gt := region.GeoTransform()
 	for _, p := range points {
-		px := int(math.Round((p.Position[0] - gt[0]) / gt[1]))
-		py := int(math.Round((p.Position[1] - gt[3]) / gt[5]))
+		px := int(math.Floor((p.Position[0] - gt[0]) / gt[1]))
+		py := int(math.Floor((p.Position[1] - gt[3]) / gt[5]))
 		if px >= 0 && px < width && py >= 0 && py < height {
 			demData[py*width+px] = p.Z
 		}
 	}
 
-	demData = inpaintFMM(demData, width, height, noData)
-	return &Result{DEM: demData, Region: region}, nil
+	filled, err := inpaintFMMOpts(demData, width, height, noData, opts, iw.Name())
+	if err != nil {
+		return nil, err
+	}
+	return &Result{DEM: filled, Region: region}, nil
 }
 
 const (
@@ -67,10 +75,15 @@ type fmmPixel struct {
 
 type fmmPriorityQueue []fmmPixel
 
-func (pq fmmPriorityQueue) Len() int            { return len(pq) }
-func (pq fmmPriorityQueue) Less(i, j int) bool  { return pq[i].dist < pq[j].dist }
-func (pq fmmPriorityQueue) Swap(i, j int)       { pq[i], pq[j] = pq[j], pq[i]; pq[i].idx = i; pq[j].idx = j }
-func (pq *fmmPriorityQueue) Push(x interface{}) { n := len(*pq); item := x.(fmmPixel); item.idx = n; *pq = append(*pq, item) }
+func (pq fmmPriorityQueue) Len() int           { return len(pq) }
+func (pq fmmPriorityQueue) Less(i, j int) bool { return pq[i].dist < pq[j].dist }
+func (pq fmmPriorityQueue) Swap(i, j int)      { pq[i], pq[j] = pq[j], pq[i]; pq[i].idx = i; pq[j].idx = j }
+func (pq *fmmPriorityQueue) Push(x interface{}) {
+	n := len(*pq)
+	item := x.(fmmPixel)
+	item.idx = n
+	*pq = append(*pq, item)
+}
 func (pq *fmmPriorityQueue) Pop() interface{} {
 	old := *pq
 	n := len(old)
@@ -81,6 +94,21 @@ func (pq *fmmPriorityQueue) Pop() interface{} {
 }
 
 func inpaintFMM(data []float64, w, h int, noData float64) []float64 {
+	result, _ := inpaintFMMOpts(data, w, h, noData, nil, string(dem.MethodInpaint))
+	return result
+}
+
+func inpaintFMMOpts(data []float64, w, h int, noData float64, opts *Options, stage string) ([]float64, error) {
+	var prog dem.ProgressFunc
+	var ctx context.Context
+	if opts != nil {
+		prog = opts.Progress
+		ctx = opts.Ctx
+	}
+	if stage == "" {
+		stage = string(dem.MethodInpaint)
+	}
+
 	result := make([]float64, len(data))
 	copy(result, data)
 
@@ -104,8 +132,29 @@ func inpaintFMM(data []float64, w, h int, noData float64) []float64 {
 	}
 
 	if unknownCount == 0 {
-		return result
+		dem.ReportProgress(prog, stage, 0, 0)
+		return result, nil
 	}
+
+	total := unknownCount
+	stride := total / 100
+	if stride < 1 {
+		stride = 1
+	}
+	done := 0
+	reported := 0
+	advance := func() error {
+		if done-reported < stride {
+			return nil
+		}
+		if err := dem.CheckCtx(ctx); err != nil {
+			return fmt.Errorf("%s: %w", stage, err)
+		}
+		reported = done
+		dem.ReportProgress(prog, stage, done, total)
+		return nil
+	}
+	dem.ReportProgress(prog, stage, 0, total)
 
 	pq := &fmmPriorityQueue{}
 	heap.Init(pq)
@@ -137,7 +186,8 @@ func inpaintFMM(data []float64, w, h int, noData float64) []float64 {
 	}
 
 	if pq.Len() == 0 {
-		return result
+		dem.ReportProgress(prog, stage, 0, total)
+		return result, nil
 	}
 
 	for pq.Len() > 0 {
@@ -152,7 +202,11 @@ func inpaintFMM(data []float64, w, h int, noData float64) []float64 {
 		flag[pIdx] = BAND_KNOWN
 
 		if result[pIdx] == noData || math.IsNaN(result[pIdx]) {
-			result[pIdx] = fmmInpaintValue(result, flag, dist, px, py, w, h, noData)
+			result[pIdx] = fmmInpaintValue(result, flag, px, py, w, h, noData)
+			done++
+			if err := advance(); err != nil {
+				return nil, err
+			}
 		}
 
 		for dy := -1; dy <= 1; dy++ {
@@ -165,17 +219,19 @@ func inpaintFMM(data []float64, w, h int, noData float64) []float64 {
 					continue
 				}
 				nIdx := ny*w + nx
+				step := math.Sqrt(float64(dx*dx + dy*dy))
 				if flag[nIdx] == BAND_INSIDE {
 					flag[nIdx] = BAND_BAND
-					newDist := math.Sqrt(float64(dx*dx + dy*dy))
+					newDist := dist[pIdx] + step
 					if newDist < dist[nIdx] {
 						dist[nIdx] = newDist
 					}
 					heap.Push(pq, fmmPixel{x: nx, y: ny, dist: dist[nIdx]})
 				} else if flag[nIdx] == BAND_BAND {
-					newDist := math.Sqrt(float64(dx*dx + dy*dy))
+					newDist := dist[pIdx] + step
 					if newDist < dist[nIdx] {
 						dist[nIdx] = newDist
+						heap.Push(pq, fmmPixel{x: nx, y: ny, dist: dist[nIdx]})
 					}
 				}
 			}
@@ -185,13 +241,18 @@ func inpaintFMM(data []float64, w, h int, noData float64) []float64 {
 	for i := range result {
 		if result[i] == noData || math.IsNaN(result[i]) {
 			result[i] = finalFallbackValue(result, i, w, h, noData)
+			done++
+			if err := advance(); err != nil {
+				return nil, err
+			}
 		}
 	}
 
-	return result
+	dem.ReportProgress(prog, stage, total, total)
+	return result, nil
 }
 
-func fmmInpaintValue(data []float64, flag []int, dist []float64, x, y, w, h int, noData float64) float64 {
+func fmmInpaintValue(data []float64, flag []int, x, y, w, h int, noData float64) float64 {
 	const searchRadius = 6
 
 	type neighbor struct {
@@ -241,48 +302,6 @@ func fmmInpaintValue(data []float64, flag []int, dist []float64, x, y, w, h int,
 		return sumVal / sumWeight
 	}
 	return noData
-}
-
-func estimateGradientX(data []float64, flag []int, x, y, w, h int, noData float64) float64 {
-	left := 0
-	if x > 0 && flag[y*w+(x-1)] == BAND_KNOWN {
-		left = 1
-	}
-	right := 0
-	if x < w-1 && flag[y*w+(x+1)] == BAND_KNOWN {
-		right = 1
-	}
-	if left == 0 && right == 0 {
-		return 0
-	}
-	if left == 0 {
-		return data[y*w+(x+1)] - data[y*w+x]
-	}
-	if right == 0 {
-		return data[y*w+x] - data[y*w+(x-1)]
-	}
-	return (data[y*w+(x+1)] - data[y*w+(x-1)]) / 2
-}
-
-func estimateGradientY(data []float64, flag []int, x, y, w, h int, noData float64) float64 {
-	up := 0
-	if y > 0 && flag[(y-1)*w+x] == BAND_KNOWN {
-		up = 1
-	}
-	down := 0
-	if y < h-1 && flag[(y+1)*w+x] == BAND_KNOWN {
-		down = 1
-	}
-	if up == 0 && down == 0 {
-		return 0
-	}
-	if up == 0 {
-		return data[(y+1)*w+x] - data[y*w+x]
-	}
-	if down == 0 {
-		return data[y*w+x] - data[(y-1)*w+x]
-	}
-	return (data[(y+1)*w+x] - data[(y-1)*w+x]) / 2
 }
 
 func fallbackIDW(data []float64, flag []int, x, y, w, h int, noData float64) float64 {

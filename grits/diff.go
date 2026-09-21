@@ -34,12 +34,24 @@ func (f *diffFilter) Run(data []float64, region *dem.Region, opts *Options) ([]f
 	width := region.XSize
 	height := region.YSize
 
+	if err := startFilter(opts, f.Name(), height); err != nil {
+		return nil, err
+	}
+
 	if refRegion.XSize != width || refRegion.YSize != height {
-		return resampleDiff(data, region, refData, refRegion, noData)
+		result, err := resampleDiffOpts(data, region, refData, refRegion, noData, opts.Threshold, opts, f.Name())
+		if err != nil {
+			return nil, err
+		}
+		finishFilter(opts, f.Name(), height)
+		return result, nil
 	}
 
 	result := make([]float64, width*height)
 	for y := 0; y < height; y++ {
+		if err := dem.CheckCtx(opts.Ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", f.Name(), err)
+		}
 		for x := 0; x < width; x++ {
 			idx := y*width + x
 			if opts.IsNoData(data[idx]) || opts.IsNoData(refData[idx]) {
@@ -53,8 +65,10 @@ func (f *diffFilter) Run(data []float64, region *dem.Region, opts *Options) ([]f
 				result[idx] = diff
 			}
 		}
+		dem.ReportProgress(opts.Progress, f.Name(), y+1, height)
 	}
 
+	finishFilter(opts, f.Name(), height)
 	return result, nil
 }
 
@@ -77,16 +91,23 @@ func ComputeDiff(dem1, dem2 []float64, region *dem.Region, absDiff bool, noData 
 	return result
 }
 
-func resampleDiff(data []float64, region *dem.Region, refData []float64, refRegion *dem.Region, noData float64) ([]float64, error) {
+func resampleDiff(data []float64, region *dem.Region, refData []float64, refRegion *dem.Region, noData, threshold float64) ([]float64, error) {
+	return resampleDiffOpts(data, region, refData, refRegion, noData, threshold, nil, "")
+}
+
+func resampleDiffOpts(data []float64, region *dem.Region, refData []float64, refRegion *dem.Region, noData, threshold float64, opts *Options, stage string) ([]float64, error) {
+	prog, ctx := progressOf(opts)
 	isNoData := func(v float64) bool { return v == noData || math.IsNaN(v) }
 	width, height := region.XSize, region.YSize
 	rw, rh := refRegion.XSize, refRegion.YSize
 
 	result := make([]float64, width*height)
-	gt := region.GeoTransform()
 	rgt := refRegion.GeoTransform()
 
 	for y := 0; y < height; y++ {
+		if err := dem.CheckCtx(ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", stage, err)
+		}
 		for x := 0; x < width; x++ {
 			idx := y*width + x
 			if isNoData(data[idx]) {
@@ -94,11 +115,10 @@ func resampleDiff(data []float64, region *dem.Region, refData []float64, refRegi
 				continue
 			}
 
-			geoX := gt[0] + float64(x)*gt[1]
-			geoY := gt[3] + float64(y)*gt[5]
+			geoX, geoY := region.PixelCenterGeo(x, y)
 
-			rx := int(math.Round((geoX - rgt[0]) / rgt[1]))
-			ry := int(math.Round((geoY - rgt[3]) / rgt[5]))
+			rx := int(math.Round((geoX-rgt[0])/rgt[1] - 0.5))
+			ry := int(math.Round((geoY-rgt[3])/rgt[5] - 0.5))
 
 			if rx < 0 || rx >= rw || ry < 0 || ry >= rh {
 				result[idx] = noData
@@ -106,13 +126,19 @@ func resampleDiff(data []float64, region *dem.Region, refData []float64, refRegi
 			}
 
 			v2 := refData[ry*rw+rx]
-			if v2 == noData || math.IsNaN(v2) {
+			if isNoData(v2) {
 				result[idx] = noData
 				continue
 			}
 
-			result[idx] = data[idx] - v2
+			diff := data[idx] - v2
+			if threshold > 0 && math.Abs(diff) < threshold {
+				result[idx] = 0
+			} else {
+				result[idx] = diff
+			}
 		}
+		dem.ReportProgress(prog, stage, y+1, height)
 	}
 
 	return result, nil

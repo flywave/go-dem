@@ -1,6 +1,7 @@
 package grits
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/flywave/go-dem"
@@ -23,7 +24,15 @@ func (f *erodeFilter) Run(data []float64, region *dem.Region, opts *Options) ([]
 	if radius <= 0 {
 		radius = 1
 	}
-	return erode(data, region.XSize, region.YSize, radius, opts.GetNoData())
+	if err := startFilter(opts, f.Name(), region.YSize); err != nil {
+		return nil, err
+	}
+	result, err := erode(data, region.XSize, region.YSize, radius, opts.GetNoData(), opts, f.Name(), 0, region.YSize)
+	if err != nil {
+		return nil, err
+	}
+	finishFilter(opts, f.Name(), region.YSize)
+	return result, nil
 }
 
 func (f *dilateFilter) Run(data []float64, region *dem.Region, opts *Options) ([]float64, error) {
@@ -31,7 +40,15 @@ func (f *dilateFilter) Run(data []float64, region *dem.Region, opts *Options) ([
 	if radius <= 0 {
 		radius = 1
 	}
-	return dilate(data, region.XSize, region.YSize, radius, opts.GetNoData())
+	if err := startFilter(opts, f.Name(), region.YSize); err != nil {
+		return nil, err
+	}
+	result, err := dilate(data, region.XSize, region.YSize, radius, opts.GetNoData(), opts, f.Name(), 0, region.YSize)
+	if err != nil {
+		return nil, err
+	}
+	finishFilter(opts, f.Name(), region.YSize)
+	return result, nil
 }
 
 func (f *openFilter) Run(data []float64, region *dem.Region, opts *Options) ([]float64, error) {
@@ -40,8 +57,21 @@ func (f *openFilter) Run(data []float64, region *dem.Region, opts *Options) ([]f
 		radius = 1
 	}
 	noData := opts.GetNoData()
-	result, _ := erode(data, region.XSize, region.YSize, radius, noData)
-	dilatedResult, _ := dilate(result, region.XSize, region.YSize, radius, noData)
+	if err := startFilter(opts, f.Name(), region.YSize); err != nil {
+		return nil, err
+	}
+	result, err := erode(data, region.XSize, region.YSize, radius, noData, opts, f.Name(), 0, region.YSize/2)
+	if err != nil {
+		return nil, err
+	}
+	if err := dem.CheckCtx(opts.Ctx); err != nil {
+		return nil, fmt.Errorf("%s: %w", f.Name(), err)
+	}
+	dilatedResult, err := dilate(result, region.XSize, region.YSize, radius, noData, opts, f.Name(), region.YSize/2, region.YSize-region.YSize/2)
+	if err != nil {
+		return nil, err
+	}
+	finishFilter(opts, f.Name(), region.YSize)
 	return dilatedResult, nil
 }
 
@@ -51,16 +81,32 @@ func (f *closeFilter) Run(data []float64, region *dem.Region, opts *Options) ([]
 		radius = 1
 	}
 	noData := opts.GetNoData()
-	result, _ := dilate(data, region.XSize, region.YSize, radius, noData)
-	erodedResult, _ := erode(result, region.XSize, region.YSize, radius, noData)
+	if err := startFilter(opts, f.Name(), region.YSize); err != nil {
+		return nil, err
+	}
+	result, err := dilate(data, region.XSize, region.YSize, radius, noData, opts, f.Name(), 0, region.YSize/2)
+	if err != nil {
+		return nil, err
+	}
+	if err := dem.CheckCtx(opts.Ctx); err != nil {
+		return nil, fmt.Errorf("%s: %w", f.Name(), err)
+	}
+	erodedResult, err := erode(result, region.XSize, region.YSize, radius, noData, opts, f.Name(), region.YSize/2, region.YSize-region.YSize/2)
+	if err != nil {
+		return nil, err
+	}
+	finishFilter(opts, f.Name(), region.YSize)
 	return erodedResult, nil
 }
 
-func erode(data []float64, w, h, radius int, noData float64) ([]float64, error) {
+func erode(data []float64, w, h, radius int, noData float64, opts *Options, stage string, doneBase, doneSpan int) ([]float64, error) {
 	result := make([]float64, w*h)
 	copy(result, data)
 
 	for y := 0; y < h; y++ {
+		if err := dem.CheckCtx(opts.Ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", stage, err)
+		}
 		for x := 0; x < w; x++ {
 			idx := y*w + x
 			if data[idx] == noData || math.IsNaN(data[idx]) {
@@ -84,21 +130,24 @@ func erode(data []float64, w, h, radius int, noData float64) ([]float64, error) 
 			}
 		nextPixel:
 		}
+		dem.ReportProgress(opts.Progress, stage, doneBase+(y+1)*doneSpan/h, h)
 	}
 
 	return result, nil
 }
 
-func dilate(data []float64, w, h, radius int, noData float64) ([]float64, error) {
+func dilate(data []float64, w, h, radius int, noData float64, opts *Options, stage string, doneBase, doneSpan int) ([]float64, error) {
 	result := make([]float64, w*h)
-	copy(result, data)
 
 	for y := 0; y < h; y++ {
+		if err := dem.CheckCtx(opts.Ctx); err != nil {
+			return nil, fmt.Errorf("%s: %w", stage, err)
+		}
 		for x := 0; x < w; x++ {
 			idx := y*w + x
 
+			maxVal := noData
 			hasValid := false
-			var sum, count float64
 
 			for dy := -radius; dy <= radius; dy++ {
 				for dx := -radius; dx <= radius; dx++ {
@@ -111,18 +160,20 @@ func dilate(data []float64, w, h, radius int, noData float64) ([]float64, error)
 					if nval == noData || math.IsNaN(nval) {
 						continue
 					}
+					if !hasValid || nval > maxVal {
+						maxVal = nval
+					}
 					hasValid = true
-					sum += nval
-					count++
 				}
 			}
 
 			if hasValid {
-				result[idx] = sum / count
+				result[idx] = maxVal
 			} else {
 				result[idx] = noData
 			}
 		}
+		dem.ReportProgress(opts.Progress, stage, doneBase+(y+1)*doneSpan/h, h)
 	}
 
 	return result, nil

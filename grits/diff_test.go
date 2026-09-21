@@ -103,11 +103,56 @@ func TestDiff_ResampleDiff(t *testing.T) {
 	data := makeRampDEM(10, 10)
 	ref := makeRampDEM(10, 10)
 
-	result, err := resampleDiff(data, reg1, ref, reg2, nd)
+	result, err := resampleDiff(data, reg1, ref, reg2, nd, 0)
 	if err != nil {
 		t.Fatalf("resampleDiff error: %v", err)
 	}
 	if len(result) != 100 {
 		t.Errorf("output size: expected 100, got %d", len(result))
+	}
+	for i, v := range result {
+		if v == nd || math.IsNaN(v) {
+			continue
+		}
+		if math.Abs(v) > 1e-10 {
+			t.Errorf("identical dems: diff at %d = %.6f", i, v)
+		}
+	}
+}
+
+func TestDiff_ResampleDiff_Threshold(t *testing.T) {
+	nd := -9999.0
+	reg1 := dem.NewRegionFromBBox(0, 0, 10, 10, nil, 1, 1)
+	reg2 := dem.NewRegionFromBBox(0, 0, 10, 10, nil, 1, 1)
+	data := makeRampDEM(10, 10)
+	ref := makeRampDEM(10, 10)
+	for i := range ref {
+		ref[i] += 0.5
+	}
+
+	below, err := resampleDiff(data, reg1, ref, reg2, nd, 1.0)
+	if err != nil {
+		t.Fatalf("resampleDiff error: %v", err)
+	}
+	for i, v := range below {
+		if v == nd {
+			continue
+		}
+		if v != 0 {
+			t.Errorf("diff %.2f below threshold 1.0 should be zeroed at %d", v, i)
+		}
+	}
+
+	above, err := resampleDiff(data, reg1, ref, reg2, nd, 0.1)
+	if err != nil {
+		t.Fatalf("resampleDiff error: %v", err)
+	}
+	for i, v := range above {
+		if v == nd {
+			continue
+		}
+		if math.Abs(v+0.5) > 1e-10 {
+			t.Errorf("diff %.2f above threshold 0.1 should be kept at %d", v, i)
+		}
 	}
 }

@@ -23,6 +23,9 @@ func BlockThinFilter(points []Point3D, opts *BlockThinOptions) []bool {
 	if len(points) == 0 {
 		return nil
 	}
+	if opts == nil {
+		opts = &BlockThinOptions{}
+	}
 
 	res := opts.Resolution
 	if res <= 0 {
@@ -48,8 +51,8 @@ func BlockThinFilter(points []Point3D, opts *BlockThinOptions) []bool {
 	}
 
 	type cellPoint struct {
-		idx   int
-		z     float64
+		idx int
+		z   float64
 	}
 	cells := make(map[int64][]cellPoint)
 

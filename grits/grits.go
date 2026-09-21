@@ -1,6 +1,7 @@
 package grits
 
 import (
+	"context"
 	"fmt"
 	"math"
 
@@ -10,24 +11,24 @@ import (
 type FilterType string
 
 const (
-	FilterGaussian   FilterType = "gaussian"
-	FilterMedian     FilterType = "median"
-	FilterBilateral  FilterType = "bilateral"
-	FilterClip       FilterType = "clip"
-	FilterFill       FilterType = "fill"
-	FilterBlend      FilterType = "blend"
-	FilterErode      FilterType = "erode"
-	FilterDilate     FilterType = "dilate"
-	FilterOpen       FilterType = "open"
-	FilterClose      FilterType = "close"
-	FilterZScore     FilterType = "zscore"
-	FilterBlur       FilterType = "blur"
-	FilterCut        FilterType = "cut"
-	FilterDenoise    FilterType = "denoise"
-	FilterFlats      FilterType = "flats"
-	FilterOutliers            FilterType = "outliers"
-	FilterEuclideanDistance   FilterType = "euclidean_distance"
-	FilterFlattenNoData       FilterType = "flatten_nodata"
+	FilterGaussian          FilterType = "gaussian"
+	FilterMedian            FilterType = "median"
+	FilterBilateral         FilterType = "bilateral"
+	FilterClip              FilterType = "clip"
+	FilterFill              FilterType = "fill"
+	FilterBlend             FilterType = "blend"
+	FilterErode             FilterType = "erode"
+	FilterDilate            FilterType = "dilate"
+	FilterOpen              FilterType = "open"
+	FilterClose             FilterType = "close"
+	FilterZScore            FilterType = "zscore"
+	FilterBlur              FilterType = "blur"
+	FilterCut               FilterType = "cut"
+	FilterDenoise           FilterType = "denoise"
+	FilterFlats             FilterType = "flats"
+	FilterOutliers          FilterType = "outliers"
+	FilterEuclideanDistance FilterType = "euclidean_distance"
+	FilterFlattenNoData     FilterType = "flatten_nodata"
 )
 
 type Options struct {
@@ -41,10 +42,12 @@ type Options struct {
 	NoData      *float64
 	PolygonWKT  string
 	SourceMask  string
-	CutBounds   [4]float64
+	CutBounds   []float64
 	CutInvert   bool
 	Method      string
 	Percentile  float64
+	Progress    dem.ProgressFunc
+	Ctx         context.Context
 }
 
 func (o *Options) GetNoData() float64 {
@@ -93,3 +96,22 @@ type baseGrits struct {
 }
 
 func (b *baseGrits) Name() string { return b.name }
+
+func progressOf(opts *Options) (dem.ProgressFunc, context.Context) {
+	if opts == nil {
+		return nil, nil
+	}
+	return opts.Progress, opts.Ctx
+}
+
+func startFilter(opts *Options, name string, total int) error {
+	dem.ReportProgress(opts.Progress, name, 0, total)
+	if err := dem.CheckCtx(opts.Ctx); err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+	return nil
+}
+
+func finishFilter(opts *Options, name string, total int) {
+	dem.ReportProgress(opts.Progress, name, total, total)
+}

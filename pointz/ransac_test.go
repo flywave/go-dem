@@ -61,3 +61,18 @@ func TestPlaneAngle(t *testing.T) {
 		t.Errorf("flat plane angle: expected ~0, got %.2f", angle)
 	}
 }
+
+func TestFitPlaneLeastSquares_Degenerate(t *testing.T) {
+	pts := []Point3D{
+		{X: 3, Y: 3, Z: 10},
+		{X: 3, Y: 3, Z: 20},
+		{X: 3, Y: 3, Z: 30},
+	}
+	plane := FitPlaneLeastSquares(pts)
+	if plane.A != 0 || plane.B != 0 {
+		t.Errorf("degenerate cloud should produce a horizontal plane, got A=%f B=%f", plane.A, plane.B)
+	}
+	if math.Abs(plane.C-20) > 1e-9 {
+		t.Errorf("degenerate plane should pass through mean Z=20, got C=%f", plane.C)
+	}
+}
